@@ -1,0 +1,38 @@
+# Build products and macOS metadata
+.build/
+.swiftpm/
+*.app/
+*.dSYM/
+.DS_Store
+
+# Local agent/editor state
+.workbuddy/
+.codex/
+.claude/
+.idea/
+.vscode/
+
+# Credentials, private configuration and runtime data
+.env
+.env.*
+!.env.example
+*auth*.json
+*credential*.json
+*secret*.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+*.sqlite*
+*.db
+Accounts/
+CLI/
+daily-quota.json
+
+# CodexBar payloads are imported locally; OpenToken is explicitly vendored.
+Sources/CodexOrbCore/Resources/Tools/*
+!Sources/CodexOrbCore/Resources/Tools/NOTICE.md
+!Sources/CodexOrbCore/Resources/Tools/versions.json
+!Sources/CodexOrbCore/Resources/Tools/CodexBar-LICENSE.txt
+!Sources/CodexOrbCore/Resources/Tools/opentoken
