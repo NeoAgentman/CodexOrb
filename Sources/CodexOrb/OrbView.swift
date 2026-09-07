@@ -14,6 +14,8 @@ protocol OrbViewDelegate: AnyObject {
 
 @MainActor
 final class OrbView: NSView, NSMenuDelegate {
+    private static let ringHitPadding: CGFloat = 6
+
     weak var delegate: OrbViewDelegate?
 
     var displayState: OrbDisplayState = .loading(previous: nil) {
@@ -110,7 +112,7 @@ final class OrbView: NSView, NSMenuDelegate {
     }
 
     override func mouseUp(with event: NSEvent) {
-        _ = event
+        let location = self.convert(event.locationInWindow, from: nil)
         defer {
             self.pressedResetCards = false
             self.lastDragLocation = nil
@@ -118,7 +120,9 @@ final class OrbView: NSView, NSMenuDelegate {
         }
         if self.totalDragDistance >= 4 {
             self.delegate?.orbViewDidFinishDragging(self)
-        } else if self.pressedResetCards, self.resetCardsRect.contains(self.convert(event.locationInWindow, from: nil)) {
+        } else if event.clickCount == 2, self.refreshRingContains(location) {
+            self.delegate?.orbViewDidRequestRefresh(self)
+        } else if self.pressedResetCards, self.resetCardsRect.contains(location) {
             self.delegate?.orbViewDidRequestResetCards(self)
         }
     }
@@ -167,7 +171,7 @@ final class OrbView: NSView, NSMenuDelegate {
         self.drawGlassBackground(in: capsule, cornerRadius: radius, colors: colors, context: context)
 
         let usage = self.displayState.usage
-        let gauge = CGRect(x: capsule.minX + 8, y: capsule.midY - 19, width: 38, height: 38)
+        let gauge = self.ringGauge
         self.drawRing(
             context: context,
             rect: gauge,
@@ -254,6 +258,19 @@ final class OrbView: NSView, NSMenuDelegate {
 
     var resetCardsRect: CGRect {
         CGRect(x: self.bounds.width - 120, y: 5, width: 44, height: 46)
+    }
+
+    private var ringGauge: CGRect {
+        let capsule = self.bounds.insetBy(dx: 3, dy: 3)
+        return CGRect(x: capsule.minX + 8, y: capsule.midY - 19, width: 38, height: 38)
+    }
+
+    private func refreshRingContains(_ point: CGPoint) -> Bool {
+        let gauge = self.ringGauge
+        let center = CGPoint(x: gauge.midX, y: gauge.midY)
+        // Include the center readout and the outer ring stroke, not just the visible lines.
+        let radius = gauge.width / 2 + Self.ringHitPadding
+        return hypot(point.x - center.x, point.y - center.y) <= radius
     }
 
     private func drawResetStack(colors: OrbColors) {
