@@ -20,7 +20,7 @@ Settings can run OpenToken self-update on an isolated temporary copy and enable 
 CodexOrb's Application Support directory. The bundled originals are unchanged; no OpenToken service is installed.
 versions.json records the imported base versions independently of the host application's Info.plist.
 
-CodexBar payloads and SHA256SUMS are gitignored; OpenToken is tracked. Public source checkouts must run
-Scripts/import_cli_tools.sh with locally obtained vendor tools before building.
+Both CLI payloads, companion resources, licenses and SHA256SUMS are tracked in Git.
+Fresh source checkouts build directly. Scripts/import_cli_tools.sh is only needed for maintainer updates.
 CodexBar archive SHA-256: a5e2cbcddde705e91f6ad8fe673f07b73efec2fe2087873174486c6dedeac69e.
 OpenToken self-update reported channel latest=0.3.27 on 2026-09-07.

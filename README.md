@@ -18,20 +18,15 @@ codexbar usage --provider codex --source oauth --format json --json-only
 opentoken preview --since <today> --json
 ```
 
-## Prepare a source checkout
+## Source checkout
 
-CodexBar binaries are excluded from Git. Obtain the pinned CodexBar universal app from
-[the official 0.56.7 release](https://github.com/steipete/CodexBar/releases/tag/v0.56.7)
-then import it alongside the included OpenToken 0.3.27 executable:
+The repository includes both pinned CLI binaries, CodexBar companion resources, its license,
+and SHA256SUMS. A fresh clone can build directly; no CodexBar app download, installation,
+or import step is required.
 
-```sh
-./Scripts/import_cli_tools.sh /path/to/CodexBar.app/Contents/Helpers "$PWD/Sources/CodexOrbCore/Resources/Tools/opentoken"
-```
-
-Python 3 is required for this import step. The script checks versions and signatures and generates
-local checksums. It does not import OAuth state, keys, logs, or account configuration.
-OpenToken is included at the repository owner's explicit request; its redistribution license has not
-been established. No application bundle is published. Local app bundles remain usable without external tools.
+`Scripts/import_cli_tools.sh` is an optional maintainer tool for updating vendor payloads.
+It requires Python 3, validates the versions in `versions.json` and executable signatures,
+and regenerates checksums. It copies no OAuth state, keys, logs, or account configuration.
 
 ## Run during development
 
@@ -69,7 +64,7 @@ Explicit `bundledExecutableDirectory: nil` is reserved for external-tool integra
 
 Run `swift run CodexOrbCoreChecks --live-gui-environment` to query both bundled sources with a minimal PATH.
 See `Sources/CodexOrbCore/Resources/Tools/NOTICE.md` for provenance and update instructions.
-OpenToken redistribution terms have not been established; the imported binary is currently for local use.
+OpenToken is included at the repository owner's explicit request; its redistribution terms remain unverified.
 
 The bundle is ad-hoc signed for local use. Distribution to other Macs requires an appropriate Developer ID signing
 and notarization workflow.

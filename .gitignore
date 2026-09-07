@@ -29,10 +29,3 @@
 Accounts/
 CLI/
 daily-quota.json
-
-# CodexBar payloads are imported locally; OpenToken is explicitly vendored.
-Sources/CodexOrbCore/Resources/Tools/*
-!Sources/CodexOrbCore/Resources/Tools/NOTICE.md
-!Sources/CodexOrbCore/Resources/Tools/versions.json
-!Sources/CodexOrbCore/Resources/Tools/CodexBar-LICENSE.txt
-!Sources/CodexOrbCore/Resources/Tools/opentoken
