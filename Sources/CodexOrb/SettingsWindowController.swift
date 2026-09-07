@@ -10,6 +10,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let reloadAccountsButton = NSButton(title: "刷新账号", target: nil, action: nil)
     private var accounts: [CodexAccount] = []
     private var isAddingAccount = false
+    private let defaultExpandedToggle = NSButton(checkboxWithTitle: "默认展开胶囊", target: nil, action: nil)
     private let refreshPopup = NSPopUpButton()
     private let validationLabel = NSTextField(labelWithString: "")
     private let updateButton = NSButton(title: "检查更新", target: nil, action: nil)
@@ -24,7 +25,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.onApply = onApply
         self.savedAccountHome = settings.accountHome
         let window = NSWindow(
-            contentRect: CGRect(x: 0, y: 0, width: 560, height: 480),
+            contentRect: CGRect(x: 0, y: 0, width: 560, height: 570),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false)
@@ -72,6 +73,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             self.refreshPopup.selectItem(at: index)
         }
         self.dailyQuotaToggle.state = settings.dailyQuotaEnabled ? .on : .off
+        self.defaultExpandedToggle.state = settings.capsuleExpandedByDefault ? .on : .off
         self.validationLabel.font = .systemFont(ofSize: 11)
         self.validationLabel.textColor = .systemRed
         self.validationLabel.maximumNumberOfLines = 2
@@ -139,19 +141,24 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             self.dailyQuotaToggle,
             text("各账号独立记录，单个失败不影响其它账号；睡眠时延至唤醒。"),
         ])
+        let capsuleSection = section([
+            text("胶囊显示", heading: true),
+            self.defaultExpandedToggle,
+            text("关闭时保持悬停展开、移出收起；展开方向保持向左。"),
+        ])
         let toolsSection = section([
             row([text("工具更新", heading: true), spacer(), self.updateSpinner, self.updateButton]),
             self.codexBarUpdateLabel,
             self.openTokenUpdateLabel,
             text("工具分别更新，失败时保留旧版。关闭窗口不影响更新。"),
         ])
-        let sections = NSStackView(views: [accountSection, refreshSection, toolsSection])
+        let sections = NSStackView(views: [accountSection, capsuleSection, refreshSection, toolsSection])
         sections.orientation = .vertical
         sections.alignment = .leading
         sections.spacing = 12
         sections.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(sections)
-        for section in [accountSection, refreshSection, toolsSection] {
+        for section in [accountSection, capsuleSection, refreshSection, toolsSection] {
             section.widthAnchor.constraint(equalTo: sections.widthAnchor).isActive = true
         }
         let cancelButton = NSButton(title: "取消", target: self, action: #selector(self.cancel(_:)))
@@ -208,7 +215,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
         guard let interval = self.refreshPopup.selectedItem?.representedObject as? TimeInterval else { return }
         let settings = AppSettings(dailyQuotaEnabled: self.dailyQuotaToggle.state == .on,
-                                   accountHome: accountHome, refreshInterval: interval)
+                                   accountHome: accountHome,
+                                   capsuleExpandedByDefault: self.defaultExpandedToggle.state == .on,
+                                   refreshInterval: interval)
         do {
             try self.onApply(settings)
             self.close()

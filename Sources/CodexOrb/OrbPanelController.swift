@@ -38,6 +38,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private var resetPopover: NSPopover?
     private var isHoveringCapsule = false
     private var isCapsuleExpanded = false
+    private var isExpandedByDefault = false
     private var resizeTask: Task<Void, Never>?
     private var hoverDismissTask: Task<Void, Never>?
 
@@ -66,6 +67,12 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
             view.dailyQuotaEnabled = enabled
             view.dailyQuota = daily
         }
+    }
+
+    func updateDefaultExpansion(_ expanded: Bool, animated: Bool = true) {
+        self.isExpandedByDefault = expanded
+        self.hoverDismissTask?.cancel()
+        self.setCapsuleExpanded(expanded || self.isHoveringCapsule, animated: animated)
     }
 
     func show() {
@@ -115,7 +122,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
                 do { try await Task.sleep(nanoseconds: Layout.hoverDismissDelayNanoseconds) }
                 catch { return }
                 guard let self, !self.isHoveringCapsule else { return }
-                self.setCapsuleExpanded(false)
+                self.setCapsuleExpanded(self.isExpandedByDefault)
             }
         }
     }
@@ -212,12 +219,21 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         panel.isExcludedFromWindowsMenu = true
     }
 
-    private func setCapsuleExpanded(_ expanded: Bool) {
+    private func setCapsuleExpanded(_ expanded: Bool, animated: Bool = true) {
         guard self.isCapsuleExpanded != expanded else { return }
         self.isCapsuleExpanded = expanded
         self.resizeTask?.cancel()
         let startWidth = self.panel.frame.width
         let targetWidth = expanded ? Layout.expandedSize.width : Layout.collapsedSize.width
+        if !animated {
+            var frame = self.panel.frame
+            let right = frame.maxX
+            frame.size.width = targetWidth
+            frame.origin.x = right - frame.width
+            self.panel.setFrame(self.constrainedFrame(frame), display: true)
+            self.orbView.needsDisplay = true
+            return
+        }
         self.resizeTask = Task { @MainActor [weak self] in
             let start = ProcessInfo.processInfo.systemUptime
             while !Task.isCancelled {

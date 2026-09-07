@@ -18,11 +18,13 @@ struct AppSettings: Equatable {
 
     private enum DefaultsKey {
         static let accountHome = "CodexOrb.accountHome"
+        static let capsuleExpandedByDefault = "CodexOrb.capsuleExpandedByDefault"
         static let refreshInterval = "CodexOrb.refreshInterval"
     }
 
     var dailyQuotaEnabled: Bool = false
     var accountHome: String
+    var capsuleExpandedByDefault: Bool = false
     var provider: String { "codex" }
     var refreshInterval: TimeInterval
 
@@ -32,11 +34,16 @@ struct AppSettings: Equatable {
         let validInterval = Self.refreshChoices.contains(where: { $0.seconds == storedInterval })
             ? storedInterval
             : 5 * 60
-        return AppSettings(dailyQuotaEnabled: DailyQuotaLaunchAgent.isEnabled, accountHome: accountHome, refreshInterval: validInterval)
+        return AppSettings(
+            dailyQuotaEnabled: DailyQuotaLaunchAgent.isEnabled,
+            accountHome: accountHome,
+            capsuleExpandedByDefault: defaults.bool(forKey: DefaultsKey.capsuleExpandedByDefault),
+            refreshInterval: validInterval)
     }
 
     func save(to defaults: UserDefaults = .standard) {
         defaults.set(self.accountHome, forKey: DefaultsKey.accountHome)
+        defaults.set(self.capsuleExpandedByDefault, forKey: DefaultsKey.capsuleExpandedByDefault)
         defaults.removeObject(forKey: "CodexOrb.quotaProvider")
         defaults.set(self.refreshInterval, forKey: DefaultsKey.refreshInterval)
     }

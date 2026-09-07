@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.terminate(nil)
         }
         CLIUpdateController.shared.onFinished = { [weak self] in self?.refresh() }
+        self.panelController.updateDefaultExpansion(
+            self.settings.capsuleExpandedByDefault,
+            animated: false)
         self.panelController.updateDailyQuota(nil, enabled: self.settings.dailyQuotaEnabled)
         self.panelController.show()
         self.refresh()
@@ -148,6 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.settings = settings
         settings.save()
+        self.panelController.updateDefaultExpansion(settings.capsuleExpandedByDefault)
         self.usageSource = CombinedUsageSource(accountHome: settings.accountHome)
         self.scheduleRefreshTimer()
 

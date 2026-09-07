@@ -88,6 +88,7 @@ Right-click the capsule and choose **Settings…** to change:
 - 添加 Codex 账号: starts browser login through the installed Codex CLI in a private home under `~/Library/Application Support/CodexOrb/Accounts/`. Complete authorization in the browser; the existing system login is preserved. Login times out after three minutes.
 - 刷新账号: discovers the native Codex login, accounts added here, and CodexBar's configured `codexProfileHomePaths`. Account labels show email and plan; internal identity keys are not displayed. Credentials are never copied into app preferences.
 - Automatic refresh: 1, 5, 10, 15, or 30 minutes, or 1 hour. The default is 5 minutes.
+- 默认展开胶囊: keep the capsule expanded after launch and when the pointer leaves it. When disabled, the capsule retains its existing hover-to-expand behavior.
 - 每天 00:00 记录周额度: enable/disable the user LaunchAgent and daily capsule indicator. Save applies the change. Disabling moves the plist to Trash and preserves history.
 - 更新 CLI: check and update CodexBar and OpenToken independently. Each has its own progress and result;
   a failure preserves that tool's previous version. Closing/reopening Settings preserves progress. This
