@@ -407,19 +407,19 @@ final class OrbView: NSView, NSMenuDelegate {
         context.setLineWidth(3)
         context.setLineCap(.butt)
         for index in 0..<7 {
-            let start = CGFloat.pi / 2 - CGFloat(index) * step - gap / 2
+            let start = CGFloat.pi / 2 + CGFloat(index) * step
             let sweep = step - gap
             context.setStrokeColor(tint.withAlphaComponent(0.18).cgColor)
             context.addArc(center: center, radius: rect.width / 2,
-                           startAngle: start, endAngle: start - sweep, clockwise: true)
+                           startAngle: start, endAngle: start + sweep, clockwise: false)
             context.strokePath()
-            // Elapsed time erases segments clockwise, including a partial day.
+            // Remaining time disappears counterclockwise from 12 o'clock.
             let fraction = min(1, max(0, remainingDays - Double(6 - index)))
             if fraction > 0 {
                 context.setStrokeColor(tint.cgColor)
                 context.addArc(center: center, radius: rect.width / 2,
-                               startAngle: start - sweep * (1 - fraction),
-                               endAngle: start - sweep, clockwise: true)
+                               startAngle: start + sweep * (1 - fraction),
+                               endAngle: start + sweep, clockwise: false)
                 context.strokePath()
             }
         }
