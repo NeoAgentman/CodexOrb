@@ -14,7 +14,7 @@ protocol OrbViewDelegate: AnyObject {
 
 @MainActor
 final class OrbView: NSView, NSMenuDelegate {
-    private static let ringHitPadding: CGFloat = 6
+    private static let minimumExpandedHitWidth: CGFloat = 164
 
     weak var delegate: OrbViewDelegate?
 
@@ -96,7 +96,7 @@ final class OrbView: NSView, NSMenuDelegate {
     override func mouseDown(with event: NSEvent) {
         _ = event
         self.pressedResetCards = self.resetCardsRect.contains(self.convert(event.locationInWindow, from: nil))
-            && self.bounds.width >= 164
+            && self.bounds.width >= Self.minimumExpandedHitWidth
         self.lastDragLocation = NSEvent.mouseLocation
         self.totalDragDistance = 0
     }
@@ -120,7 +120,7 @@ final class OrbView: NSView, NSMenuDelegate {
         }
         if self.totalDragDistance >= 4 {
             self.delegate?.orbViewDidFinishDragging(self)
-        } else if event.clickCount == 2, self.refreshRingContains(location) {
+        } else if event.clickCount == 2, self.tokenConsumptionContains(location) {
             self.delegate?.orbViewDidRequestRefresh(self)
         } else if self.pressedResetCards, self.resetCardsRect.contains(location) {
             self.delegate?.orbViewDidRequestResetCards(self)
@@ -199,13 +199,7 @@ final class OrbView: NSView, NSMenuDelegate {
         // Content stays anchored to the right edge and is covered by the moving ring.
         context.saveGState()
         context.clip(to: CGRect(x: 57, y: 3, width: max(0, self.bounds.width - 64), height: 50))
-        let contentX = self.bounds.width - 176 + 56
-        let tokenX = contentX + 38
-        let tokenRect = CGRect(
-            x: tokenX,
-            y: capsule.midY - 9,
-            width: 72,
-            height: 23)
+        let tokenRect = self.tokenConsumptionRect
         let topModelText = usage?.todayTokens?.modelUsages.first?.displayName ?? "—"
 
         if let today = usage?.todayTokens {
@@ -232,9 +226,9 @@ final class OrbView: NSView, NSMenuDelegate {
         self.drawText(
             topModelText,
             in: CGRect(
-                x: tokenX,
+                x: tokenRect.minX,
                 y: capsule.minY + 2,
-                width: 72,
+                width: tokenRect.width,
                 height: 14),
             font: .systemFont(ofSize: 11, weight: .medium),
             color: colors.secondaryText,
@@ -263,12 +257,19 @@ final class OrbView: NSView, NSMenuDelegate {
         return CGRect(x: capsule.minX + 8, y: capsule.midY - 19, width: 38, height: 38)
     }
 
-    private func refreshRingContains(_ point: CGPoint) -> Bool {
-        let gauge = self.ringGauge
-        let center = CGPoint(x: gauge.midX, y: gauge.midY)
-        // Include the center readout and the outer ring stroke, not just the visible lines.
-        let radius = gauge.width / 2 + Self.ringHitPadding
-        return hypot(point.x - center.x, point.y - center.y) <= radius
+    private var tokenConsumptionRect: CGRect {
+        let capsule = self.bounds.insetBy(dx: 3, dy: 3)
+        let contentX = self.bounds.width - 176 + 56
+        return CGRect(
+            x: contentX + 38,
+            y: capsule.midY - 9,
+            width: 72,
+            height: 23)
+    }
+
+    private func tokenConsumptionContains(_ point: CGPoint) -> Bool {
+        guard self.bounds.width >= Self.minimumExpandedHitWidth else { return false }
+        return self.tokenConsumptionRect.contains(point)
     }
 
     private func drawResetStack(colors: OrbColors) {
