@@ -160,6 +160,7 @@ enum CodexOrbCoreChecks {
         try self.expect(usage.weekly?.remainingPercent == 41, "weekly remaining")
         try self.expect(usage.bindingRemainingPercent == 41, "binding remaining")
         try self.expect(usage.session?.windowMinutes == 300, "session duration")
+        try self.expect(usage.fiveHourQuota?.remainingPercent == 72, "five-hour remaining")
         try self.expect(usage.weekly?.windowMinutes == 10080, "weekly duration")
         try self.expect(usage.weekly?.resetsAt != nil, "fractional ISO-8601 date")
     }

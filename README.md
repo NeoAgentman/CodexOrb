@@ -77,7 +77,7 @@ The app icon source is `Resources/AppIcon.png`. The build script generates the c
 - Click the reset-card stack to open the available reset cards.
 - Drag to move; the position is restored on the next launch.
 - Double-click the quota ring to refresh; right-click to refresh, open Settings, or quit.
-- Collapsed orb: weekly remaining quota and signed pace delta. Pace is hidden when weekly quota is exhausted.
+- Collapsed orb: weekly remaining quota and 5-hour remaining quota. The pace indicator remains on the quota ring and is hidden when weekly quota is exhausted.
 - Expanded capsule: adds reset credits, today's all-tool token total including cached reads, and the top model.
 
 ## Settings

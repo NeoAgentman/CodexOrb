@@ -181,22 +181,20 @@ final class OrbView: NSView, NSMenuDelegate {
         self.drawWeeklyTimeRing(context: context, rect: gauge.insetBy(dx: -3.75, dy: -3.75))
         self.drawPaceArc(context: context, rect: gauge)
         self.drawDailyQuotaArc(context: context, rect: gauge)
-        let pace = usage?.weeklyPaceDeltaPercent
+        let fiveHourRemaining = usage?.fiveHourQuota?.remainingPercent
         self.drawText(
             usage?.ringQuota.map { "\(Int($0.remainingPercent.rounded()))%" } ?? "—",
-            in: CGRect(x: gauge.minX, y: gauge.midY + (pace == nil ? -7.5 : -1),
-                       width: gauge.width, height: pace == nil ? 16 : 14),
-            font: .monospacedDigitSystemFont(ofSize: pace == nil ? 11 : 10.5, weight: .semibold),
+            in: CGRect(x: gauge.minX, y: gauge.midY - 1,
+                       width: gauge.width, height: 14),
+            font: .monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold),
             color: colors.primaryText,
             alignment: .center)
-        if let pace {
-            self.drawText(
-                Self.paceText(pace),
-                in: CGRect(x: gauge.minX, y: gauge.midY - 13, width: gauge.width, height: 11),
-                font: .monospacedDigitSystemFont(ofSize: 8.5, weight: .semibold),
-                color: self.paceColor(pace),
-                alignment: .center)
-        }
+        self.drawText(
+            fiveHourRemaining.map { "\(Int($0.rounded()))%" } ?? "--",
+            in: CGRect(x: gauge.minX, y: gauge.midY - 13, width: gauge.width, height: 11),
+            font: .monospacedDigitSystemFont(ofSize: 8.5, weight: .semibold),
+            color: self.meterColor(for: fiveHourRemaining),
+            alignment: .center)
 
         // Content stays anchored to the right edge and is covered by the moving ring.
         context.saveGState()
@@ -531,12 +529,6 @@ final class OrbView: NSView, NSMenuDelegate {
         return self.meterColor(for: self.displayState.usage?.ringQuota?.remainingPercent)
     }
 
-    private func paceColor(_ delta: Double) -> NSColor {
-        if delta >= 0.5 { return .systemOrange }
-        if delta <= -0.5 { return .systemBlue }
-        return self.colors.secondaryText
-    }
-
     private func updateAccessibility() {
         let value: String
         if let usage = self.displayState.usage {
@@ -589,13 +581,6 @@ final class OrbView: NSView, NSMenuDelegate {
         default:
             return "\(value)"
         }
-    }
-
-    private static func paceText(_ delta: Double) -> String {
-        let rounded = Int(abs(delta).rounded())
-        if delta >= 0.5 { return "+\(rounded)%" }
-        if delta <= -0.5 { return "−\(rounded)%" }
-        return "±0%"
     }
 
     private var colors: OrbColors {

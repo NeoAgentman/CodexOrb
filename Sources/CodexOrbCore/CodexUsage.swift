@@ -89,6 +89,14 @@ public struct CodexUsage: Equatable, Sendable {
         return self.weekly ?? self.session
     }
 
+    /// The core five-hour window, independent of whether CodexBar placed it in
+    /// the primary or secondary slot.
+    public var fiveHourQuota: CodexQuotaWindow? {
+        [self.session, self.weekly]
+            .compactMap { $0 }
+            .first { $0.windowMinutes == 300 }
+    }
+
     public var weeklyPaceDeltaPercent: Double? {
         guard
             let weekly = [self.session, self.weekly]
