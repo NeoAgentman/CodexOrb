@@ -179,7 +179,6 @@ final class OrbView: NSView, NSMenuDelegate {
             width: 3.5,
             color: self.meterColor(for: usage?.ringQuota?.remainingPercent))
         self.drawWeeklyTimeRing(context: context, rect: gauge.insetBy(dx: -3.75, dy: -3.75))
-        self.drawPaceArc(context: context, rect: gauge)
         self.drawDailyQuotaArc(context: context, rect: gauge)
         let fiveHourRemaining = usage?.fiveHourQuota?.remainingPercent
         self.drawText(
@@ -344,14 +343,12 @@ final class OrbView: NSView, NSMenuDelegate {
         context.saveGState()
         context.setLineWidth(4)
         context.setLineCap(.butt)
-        let tint = self.displayState.usage?.weeklyPaceDeltaPercent.map { self.paceArcColor($0) }
-            ?? self.meterColor(for: remaining)
-        // Use an opaque pale tint so an underlying pace arc cannot change its color.
+        let tint = self.meterColor(for: remaining)
         let dailyTint = tint.blended(withFraction: 0.15, of: .white) ?? tint
         let arc = CGMutablePath()
         arc.addArc(center: CGPoint(x: rect.midX, y: rect.midY), radius: rect.width / 2,
                    startAngle: angle(remaining), endAngle: angle(dayStartRemaining), clockwise: true)
-        // Restore the track underneath so the pace overlay cannot fill the dash gaps.
+        // Restore the track underneath to keep the dash gaps clear.
         context.saveGState()
         context.addPath(arc)
         context.replacePathWithStrokedPath()
@@ -366,40 +363,6 @@ final class OrbView: NSView, NSMenuDelegate {
         context.setLineDash(phase: 0, lengths: [2.5, 1.5])
         context.setStrokeColor(dailyTint.cgColor)
         context.addPath(arc)
-        context.strokePath()
-        context.restoreGState()
-    }
-
-    private func drawPaceArc(context: CGContext, rect: CGRect) {
-        guard let usage = self.displayState.usage,
-              usage.ringQuota?.windowMinutes == 10_080,
-              let remaining = usage.ringQuota?.remainingPercent,
-              let delta = usage.weeklyPaceDeltaPercent else { return }
-        let actual = min(100, max(0, remaining))
-        let expected = min(100, max(0, actual + delta))
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let radius = rect.width / 2
-        let angle: (Double) -> CGFloat = { .pi / 2 - 2 * .pi * $0 / 100 }
-        context.saveGState()
-        context.setLineCap(.butt)
-        context.setLineWidth(3.5)
-        if abs(actual - expected) > 0.001 {
-            context.setStrokeColor(self.paceArcColor(delta).cgColor)
-            // A dashed deficit occupies spent quota; it must not look like remaining quota.
-            if delta > 0 { context.setLineDash(phase: 0, lengths: [2, 1.5]) }
-            context.addArc(center: center, radius: radius,
-                           startAngle: angle(min(actual, expected)),
-                           endAngle: angle(max(actual, expected)), clockwise: true)
-            context.strokePath()
-        }
-        context.setLineDash(phase: 0, lengths: [])
-        context.setStrokeColor(self.colors.primaryText.cgColor)
-        context.setLineWidth(1.5)
-        let marker = angle(expected)
-        context.move(to: CGPoint(x: center.x + (radius - 2) * cos(marker),
-                                 y: center.y + (radius - 2) * sin(marker)))
-        context.addLine(to: CGPoint(x: center.x + (radius + 1) * cos(marker),
-                                    y: center.y + (radius + 1) * sin(marker)))
         context.strokePath()
         context.restoreGState()
     }
@@ -522,12 +485,6 @@ final class OrbView: NSView, NSMenuDelegate {
         case ..<30: NSColor.systemOrange
         default: NSColor.systemGreen
         }
-    }
-
-    private func paceArcColor(_ delta: Double) -> NSColor {
-        if delta > 0 { return .systemOrange }
-        if delta < 0 { return .systemBlue }
-        return self.meterColor(for: self.displayState.usage?.ringQuota?.remainingPercent)
     }
 
     private func updateAccessibility() {

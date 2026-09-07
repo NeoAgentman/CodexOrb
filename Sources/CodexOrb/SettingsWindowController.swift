@@ -1,8 +1,12 @@
 import AppKit
 import CodexOrbCore
+import ServiceManagement
 
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    private let launchAtLoginSwitch = NSSwitch()
+    private let launchAtLoginStatus = NSTextField(wrappingLabelWithString: "")
+    private let loginSettingsButton = NSButton(title: "打开系统登录项设置…", target: nil, action: nil)
     private let dailyQuotaToggle = NSButton(checkboxWithTitle: "每天 00:00 记录所有 Codex 账号周额度", target: nil, action: nil)
     private let providerField = NSPopUpButton()
     private let currentAccountLabel = NSTextField(wrappingLabelWithString: "")
@@ -25,7 +29,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.onApply = onApply
         self.savedAccountHome = settings.accountHome
         let window = NSWindow(
-            contentRect: CGRect(x: 0, y: 0, width: 560, height: 570),
+            contentRect: CGRect(x: 0, y: 0, width: 560, height: 656),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false)
@@ -45,6 +49,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func present() {
+        self.renderLaunchAtLogin()
         self.window?.center()
         self.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -129,6 +134,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             for view in views { view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
             return box
         }
+        self.launchAtLoginSwitch.target = self
+        self.launchAtLoginSwitch.action = #selector(self.toggleLaunchAtLogin(_:))
+        self.launchAtLoginSwitch.setAccessibilityLabel("开机启动")
+        self.launchAtLoginStatus.font = .systemFont(ofSize: 11)
+        self.launchAtLoginStatus.maximumNumberOfLines = 2
+        self.loginSettingsButton.target = self
+        self.loginSettingsButton.action = #selector(self.openLoginSettings(_:))
+        self.renderLaunchAtLogin()
+        let startupSection = section([
+            row([text("开机启动", heading: true), spacer(), self.launchAtLoginSwitch]),
+            self.launchAtLoginStatus,
+            self.loginSettingsButton,
+        ])
         let accountSection = section([
             row([text("Codex 账号", heading: true), spacer(), self.addAccountButton, self.reloadAccountsButton]),
             self.currentAccountLabel,
@@ -152,13 +170,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             self.openTokenUpdateLabel,
             text("工具分别更新，失败时保留旧版。关闭窗口不影响更新。"),
         ])
-        let sections = NSStackView(views: [accountSection, capsuleSection, refreshSection, toolsSection])
+        let sections = NSStackView(views: [startupSection, accountSection, capsuleSection, refreshSection, toolsSection])
         sections.orientation = .vertical
         sections.alignment = .leading
         sections.spacing = 12
         sections.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(sections)
-        for section in [accountSection, capsuleSection, refreshSection, toolsSection] {
+        for section in [startupSection, accountSection, capsuleSection, refreshSection, toolsSection] {
             section.widthAnchor.constraint(equalTo: sections.widthAnchor).isActive = true
         }
         let cancelButton = NSButton(title: "取消", target: self, action: #selector(self.cancel(_:)))
@@ -188,6 +206,54 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             self.updateSpinner.widthAnchor.constraint(equalToConstant: 16),
             self.updateSpinner.heightAnchor.constraint(equalToConstant: 16),
         ])
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        self.renderLaunchAtLogin()
+    }
+
+    private func renderLaunchAtLogin() {
+        let status = SMAppService.mainApp.status
+        self.launchAtLoginSwitch.state = status == .enabled ? .on : (status == .requiresApproval ? .mixed : .off)
+        self.loginSettingsButton.isHidden = status != .requiresApproval
+        self.launchAtLoginStatus.isHidden = status != .requiresApproval
+        self.launchAtLoginStatus.textColor = .secondaryLabelColor
+        switch status {
+        case .enabled:
+            self.launchAtLoginStatus.stringValue = "已开启：登录 Mac 后自动启动。此开关立即生效。"
+        case .requiresApproval:
+            self.launchAtLoginStatus.stringValue = "等待系统批准：请在系统登录项设置中允许 CodexOrb。"
+        case .notRegistered:
+            self.launchAtLoginStatus.stringValue = "已关闭：登录 Mac 后不自动启动。此开关立即生效。"
+        case .notFound:
+            self.launchAtLoginStatus.stringValue = "尚未注册开机启动，可打开开关启用。此开关立即生效。"
+        @unknown default:
+            self.launchAtLoginStatus.stringValue = "无法读取登录项状态，请在系统设置中检查。"
+        }
+    }
+
+    @objc private func toggleLaunchAtLogin(_ sender: NSSwitch) {
+        do {
+            if sender.state == .on {
+                if SMAppService.mainApp.status != .enabled && SMAppService.mainApp.status != .requiresApproval {
+                    try SMAppService.mainApp.register()
+                }
+            } else if SMAppService.mainApp.status != .notRegistered {
+                try SMAppService.mainApp.unregister()
+            }
+            self.renderLaunchAtLogin()
+        } catch {
+            self.renderLaunchAtLogin()
+            if SMAppService.mainApp.status != .requiresApproval {
+                self.launchAtLoginStatus.isHidden = false
+                self.launchAtLoginStatus.textColor = .systemRed
+                self.launchAtLoginStatus.stringValue = "无法更改开机启动：\(error.localizedDescription)"
+            }
+        }
+    }
+
+    @objc private func openLoginSettings(_ sender: Any?) {
+        SMAppService.openSystemSettingsLoginItems()
     }
 
     private func renderCLIUpdates() {
