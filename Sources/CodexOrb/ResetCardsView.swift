@@ -243,7 +243,7 @@ final class ResetCardsView: NSView {
             divider.stroke()
             self.text(nearest ? L10n.text("最近到期") : "", rect: NSRect(x: rect.minX, y: rect.minY + 63, width: rect.width, height: 13),
                       size: 8, color: nearest ? accent : .tertiaryLabelColor, weight: .medium)
-            self.text(expiration.map { formatter.string(from: $0) } ?? (cards[index] == nil ? L10n.text("日期待更新") : L10n.text("无到期时间")),
+            self.text(expiration.map { L10n.text("\(formatter.string(from: $0)) 到期") } ?? (cards[index] == nil ? L10n.text("日期待更新") : L10n.text("无到期时间")),
                       rect: NSRect(x: rect.minX, y: rect.minY + 6, width: rect.width, height: 11),
                       size: 8.5, color: .secondaryLabelColor)
         }

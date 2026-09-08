@@ -165,6 +165,7 @@ public enum L10n {
         "{0}天": "{0}d",
         "未知": "—",
         "暂无": "None",
+        "{0} 到期": "Expires {0}",
         "重置卡 · 剩余天数": "Resets · Days left",
         "点击使用重置卡": "Click to use",
         "{0} 次可用": "{0} available",
