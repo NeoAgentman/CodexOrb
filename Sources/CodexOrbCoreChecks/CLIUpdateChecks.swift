@@ -8,7 +8,7 @@ enum CLIUpdateChecks {
         try await self.checkIndependentUpdatesAndRetention()
         try await self.checkStagedOpenTokenReplacement()
         try await self.checkProcessAndSandbox()
-        print("CLI updater checks passed: release validation, independent results, rollback, locking, process limits and sandbox")
+        print("OpenToken updater checks passed: version validation, rollback, locking, process limits and sandbox")
     }
 
     private static func expect(_ condition: Bool, _ message: String) throws {
@@ -20,29 +20,6 @@ enum CLIUpdateChecks {
         try self.expect(CLIVersion("v0.56.6") == CLIVersion("0.56.6"), "release tag versions")
         for invalid in ["../1.0.0", "0.1", "0.1.2-beta", "", "0.1.-2"] {
             try self.expect(CLIVersion(invalid) == nil, "reject ambiguous version")
-        }
-        func release(url: String, digest: String, prerelease: Bool = false) throws -> CodexBarRelease {
-            let json: [String: Any] = [
-                "tag_name": "v0.56.6", "draft": false, "prerelease": prerelease,
-                "assets": [["name": "CodexBarCLI-v0.56.6-macos-arm64.tar.gz",
-                            "browser_download_url": url, "digest": digest]],
-            ]
-            return try JSONDecoder().decode(CodexBarRelease.self, from: JSONSerialization.data(withJSONObject: json))
-        }
-        let url = "https://github.com/steipete/CodexBar/releases/download/v0.56.6/CodexBarCLI-v0.56.6-macos-arm64.tar.gz"
-        let digest = "sha256:" + String(repeating: "a", count: 64)
-        _ = try release(url: url, digest: digest).candidate(architecture: "arm64")
-        for invalid in [try release(url: url.replacingOccurrences(of: "github.com", with: "example.com"), digest: digest),
-                        try release(url: url, digest: "sha256:bad"),
-                        try release(url: url, digest: digest, prerelease: true)] {
-            do {
-                _ = try invalid.candidate(architecture: "arm64")
-                throw NSError(domain: "test", code: 1)
-            } catch CLIUpdateError.channelUnavailable { }
-        }
-        try self.expect(CLIUpdater.safeArchivePaths("CodexBarCLI\n./VERSION\nCodexBar_CodexBarCore.bundle/file.js\n"), "valid archive")
-        for invalid in ["/tmp/escape", "./../../escape", "a/../escape", ""] {
-            try self.expect(!CLIUpdater.safeArchivePaths(invalid), "unsafe archive path")
         }
     }
 
@@ -58,21 +35,17 @@ enum CLIUpdateChecks {
         defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
         let bundled = root.appendingPathComponent("bundled")
         for tool in CLITool.allCases { try self.fixture(bundled, tool: tool, body: "#!/bin/sh\necho old\n") }
-        try Data(#"{"codexbar":"1.0.0","opentoken":"1.0.0"}"#.utf8).write(to: bundled.appendingPathComponent("versions.json"))
+        try Data(#"{"opentoken":"1.0.0"}"#.utf8).write(to: bundled.appendingPathComponent("versions.json"))
         let store = CLIInstallationStore(root: root.appendingPathComponent("managed"), bundledDirectory: bundled)
         let updater = CLIUpdater(store: store, prepare: { tool, _, _, work, _ in
-            if tool == .codexbar { throw CLIUpdateError.checksum }
             try self.fixture(work.appendingPathComponent("ready"), tool: tool, body: "#!/bin/sh\necho new\n")
             return "1.1.0"
         }, validate: { _, directory, _, _ in
             try self.expect(try String(contentsOf: directory.appendingPathComponent("opentoken"), encoding: .utf8).contains("new"), "validate candidate bytes")
         })
-        async let quota = updater.update(.codexbar)
-        async let tokens = updater.update(.opentoken)
-        let (q, t) = await (quota, tokens)
-        try self.expect(q.outcome == .failed && t.outcome == .updated, "one failure must not cancel the other tool")
-        try self.expect(store.activeDirectory(for: .codexbar) == bundled, "failed update retains bundled version")
-        try self.expect(store.activeVersion(for: .opentoken) == "1.1.0", "successful independent update activated")
+        let resultOK = await updater.update(.opentoken)
+        try self.expect(resultOK.outcome == .updated, "validated update activated")
+        try self.expect(store.activeVersion(for: .opentoken) == "1.1.0", "successful update activated")
         let oldDirectory = store.activeDirectory(for: .opentoken)
         let pointer = store.toolDirectory(for: .opentoken).appendingPathComponent("current.json")
         let oldPointer = try Data(contentsOf: pointer)

@@ -1,33 +1,21 @@
 #!/usr/bin/env bash
 # Import only vendor executables/resources; never copy user configuration.
 set -euo pipefail
-if [[ $# != 2 ]]; then
-  echo "Usage: $0 /path/to/CodexBar.app/Contents/Helpers /path/to/opentoken" >&2
+if [[ $# != 1 ]]; then
+  echo "Usage: $0 /path/to/opentoken" >&2
   exit 2
 fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLS_DIR="$ROOT_DIR/Sources/CodexOrbCore/Resources/Tools"
-VENDOR_DIR="$1"
-OPEN_TOKEN_BIN="$2"
-for binary in "$VENDOR_DIR/CodexBarCLI" "$VENDOR_DIR/CodexBarClaudeWatchdog" "$OPEN_TOKEN_BIN"; do
-  codesign --verify --strict "$binary"
-done
-[[ -d "$VENDOR_DIR/CodexBar_CodexBarCore.bundle" ]]
-python3 - "$TOOLS_DIR/versions.json" "$VENDOR_DIR/CodexBarCLI" "$OPEN_TOKEN_BIN" <<'PY'
+OPEN_TOKEN_BIN="$1"
+codesign --verify --strict "$OPEN_TOKEN_BIN"
+python3 - "$TOOLS_DIR/versions.json" "$OPEN_TOKEN_BIN" <<'CHECK'
 import json, subprocess, sys
-versions = json.load(open(sys.argv[1]))
-for tool, binary in zip(('codexbar', 'opentoken'), sys.argv[2:]):
-    actual = subprocess.check_output([binary, '--version'], text=True).strip().split()[-1]
-    if actual != versions[tool]:
-        raise SystemExit(f'{tool}: expected {versions[tool]}, got {actual}')
-PY
-cp "$VENDOR_DIR/CodexBarCLI" "$TOOLS_DIR/codexbar"
-cp "$VENDOR_DIR/CodexBarClaudeWatchdog" "$TOOLS_DIR/CodexBarClaudeWatchdog"
-# Remove stale vendor resources only after validating the new payload.
-if [[ -d "$TOOLS_DIR/CodexBar_CodexBarCore.bundle" ]]; then
-  mv "$TOOLS_DIR/CodexBar_CodexBarCore.bundle" "$(mktemp -d)/CodexBar_CodexBarCore.bundle"
-fi
-ditto "$VENDOR_DIR/CodexBar_CodexBarCore.bundle" "$TOOLS_DIR/CodexBar_CodexBarCore.bundle"
+expected = json.load(open(sys.argv[1]))['opentoken']
+actual = subprocess.check_output([sys.argv[2], '--version'], text=True).strip().split()[-1]
+if actual != expected:
+    raise SystemExit(f'opentoken: expected {expected}, got {actual}')
+CHECK
 if [[ "$OPEN_TOKEN_BIN" != "$TOOLS_DIR/opentoken" ]]; then
   cp "$OPEN_TOKEN_BIN" "$TOOLS_DIR/opentoken"
 fi

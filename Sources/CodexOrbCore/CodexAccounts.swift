@@ -6,6 +6,7 @@ public struct CodexAccount: Equatable, Sendable {
     public let email: String
     public let workspace: String
     public let identityKey: String
+    public let accountID: String
 
     public var label: String {
         "\(email) · \(workspace)"
@@ -50,7 +51,7 @@ public struct CodexAccountStore: Sendable {
         let plan = auth["chatgpt_plan_type"] as? String ?? "Codex"
         let key = SHA256.hash(data: Data((email.lowercased() + ":" + accountID).utf8))
             .map { String(format: "%02x", $0) }.joined()
-        return CodexAccount(home: home.path, email: email, workspace: plan, identityKey: key)
+        return CodexAccount(home: home.path, email: email, workspace: plan, identityKey: key, accountID: accountID)
     }
 
     private static func claims(_ jwt: String) -> [String: Any]? {

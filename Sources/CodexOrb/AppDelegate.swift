@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var refreshTask: Task<Void, Never>?
     private var refreshID: UUID?
     private var lastUsage: CodexUsage?
+    private var resetTask: Task<Void, Never>?
 
     override init() {
         let settings = AppSettings.load()
@@ -27,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panelController.onSettings = { [weak self] in
             self?.showSettings()
         }
+        self.panelController.onConsumeReset = { [weak self] id in self?.consumeReset(id) }
         self.panelController.onQuit = {
             NSApp.terminate(nil)
         }
@@ -43,12 +45,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = notification
         self.refreshTimer?.invalidate()
         self.refreshTask?.cancel()
+        self.resetTask?.cancel()
         self.settingsWindowController?.close()
         self.panelController.close()
     }
 
     private func refresh() {
-        guard self.refreshID == nil else { return }
+        self.updateResetRecovery()
+        guard self.refreshID == nil, self.resetTask == nil else { return }
         let refreshID = UUID()
         self.refreshID = refreshID
         self.panelController.update(.loading(previous: self.lastUsage))
@@ -157,5 +161,95 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.panelController.update(.loading(previous: nil))
         }
         self.refresh()
+    }
+
+    private func updateResetRecovery() {
+        guard let account = try? CodexAccountStore.read(home: URL(fileURLWithPath: settings.accountHome)) else {
+            panelController.resetRecoveryAvailable = false
+            return
+        }
+        do { panelController.resetRecoveryAvailable = try PendingResetStore().read(account.identityKey) != nil }
+        catch { panelController.resetRecoveryAvailable = true }
+    }
+
+    private func resetMessage(_ message: String, account: CodexAccount? = nil) {
+        let alert = NSAlert()
+        alert.messageText = L10n.text("重置卡")
+        alert.informativeText = (account.map { $0.label + "\n" } ?? "") + message
+        alert.addButton(withTitle: L10n.text("确定"))
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    private func consumeReset(_ requestedID: String?) {
+        guard resetTask == nil else { return }
+        let account: CodexAccount
+        do { account = try CodexAccountStore.read(home: URL(fileURLWithPath: settings.accountHome)) }
+        catch { resetMessage(AppServerError.accountChanged.localizedDescription); return }
+        let oldRefresh = refreshTask
+        oldRefresh?.cancel()
+        refreshTask = nil
+        refreshID = nil
+        panelController.resetBusy = true
+        resetTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.resetTask = nil
+                self.panelController.resetBusy = false
+                self.updateResetRecovery()
+                self.refresh()
+            }
+            // Wait until cancellation has closed any older quota connection.
+            await oldRefresh?.value
+            do {
+                let pending = try await CodexAccountService.shared.pending(account: account)
+                let target: String
+                let description: String
+                if let pending {
+                    guard requestedID == nil else {
+                        self.resetMessage(L10n.text("请先恢复上次重置操作，再使用其他卡片。"), account: account)
+                        return
+                    }
+                    target = pending.creditID
+                    description = pending.outcome == nil
+                        ? L10n.text("将核实上次重置操作，复用原请求，不会发起新的独立消费。")
+                        : L10n.text("上次操作已有结果，将重新读取额度和卡片。")
+                } else {
+                    guard let requestedID else { return }
+                    let usage = try await CodexAccountService.shared.fetch(account: account)
+                    guard let card = usage.resetCredits?.availableCards.first(where: { $0.id == requestedID && $0.isRedeemable() }),
+                          usage.resetCredits?.availableCount ?? 0 > 0 else { throw AppServerError.cardUnavailable }
+                    target = requestedID
+                    let expiry = card.expiresAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? L10n.text("无到期时间")
+                    description = L10n.text("将消耗 1 张重置卡，重置符合条件的额度窗口。") + "\n" + expiry
+                }
+                guard self.settings.accountHome == account.home else { throw AppServerError.accountChanged }
+                try Task.checkCancellation()
+                NSApp.activate(ignoringOtherApps: true)
+                guard ResetConfirmation.confirm(accountLabel: account.label, detail: description, recovering: pending != nil) else { return }
+                guard self.settings.accountHome == account.home else { throw AppServerError.accountChanged }
+                let result = try await CodexAccountService.shared.consume(account: account, creditID: target)
+                if let usage = result.usage, self.settings.accountHome == account.home,
+                   (try? CodexAccountStore.read(home: URL(fileURLWithPath: account.home)).identityKey) == account.identityKey {
+                    self.apply(.quota(.success(usage)), errors: [], isFinal: true)
+                }
+                let message: String
+                switch result.outcome {
+                case .reset: message = L10n.text("已消费 1 张重置卡。")
+                case .alreadyRedeemed: message = L10n.text("上次操作已成功，没有再次消费。")
+                case .nothingToReset: message = L10n.text("当前没有符合条件的额度窗口，未执行重置。")
+                case .noCredit: message = L10n.text("账号没有可用的重置卡。")
+                }
+                self.resetMessage(message + (result.usage == nil ? "\n" + L10n.text("额度刷新失败，请恢复操作以重新查询。") : ""), account: account)
+            } catch is CancellationError {
+                // A sent operation remains durable and can be recovered after restart.
+            } catch {
+                let pending = try? await CodexAccountService.shared.pending(account: account)
+                let message = pending != nil
+                    ? L10n.text("上次重置操作尚待确认，请使用“恢复上次重置操作”，不要重复消费。")
+                    : (error as? AppServerError)?.localizedDescription ?? L10n.text("无法完成重置操作，请检查账号或稍后重试。")
+                self.resetMessage(message, account: account)
+            }
+        }
     }
 }

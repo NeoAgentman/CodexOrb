@@ -3,9 +3,9 @@ import Darwin
 import Foundation
 
 public enum CLITool: String, CaseIterable, Codable, Sendable {
-    case codexbar, opentoken
+    case opentoken
 
-    public var title: String { self == .codexbar ? "CodexBar" : "OpenToken" }
+    public var title: String { "OpenToken" }
 }
 
 public struct CLIInstallation: Codable, Equatable, Sendable {

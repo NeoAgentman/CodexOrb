@@ -116,17 +116,17 @@ public struct CombinedUsageError: LocalizedError, Sendable {
 }
 
 public struct CombinedUsageSource: CodexUsageSourcing {
-    private let codexBar: CodexBarCLIUsageSource
+    private let quotaSource: any CodexUsageSourcing
     private let openToken: OpenTokenCLIUsageSource
     private let retryPolicy: UsageRetryPolicy
 
     public init(
         accountHome: String? = nil,
-        codexBar: CodexBarCLIUsageSource? = nil,
+        quotaSource: (any CodexUsageSourcing)? = nil,
         openToken: OpenTokenCLIUsageSource = OpenTokenCLIUsageSource(),
         retryPolicy: UsageRetryPolicy = .standard)
     {
-        self.codexBar = codexBar ?? CodexBarCLIUsageSource(accountHome: accountHome)
+        self.quotaSource = quotaSource ?? CodexAppServerUsageSource(accountHome: accountHome)
         self.openToken = openToken
         self.retryPolicy = retryPolicy
     }
@@ -135,7 +135,7 @@ public struct CombinedUsageSource: CodexUsageSourcing {
         let refresh = await self.fetchIndependently()
         guard case let .success(codex) = refresh.quota else {
             if case let .failure(message) = refresh.quota { throw CombinedUsageError(message: message) }
-            throw CombinedUsageError(message: "CodexBar refresh failed.")
+            throw CombinedUsageError(message: "Codex refresh failed.")
         }
         guard case let .success(tokens) = refresh.tokens else {
             if case let .failure(message) = refresh.tokens { throw CombinedUsageError(message: message) }
@@ -151,8 +151,8 @@ public struct CombinedUsageSource: CodexUsageSourcing {
     }
 
     public func fetchQuota() async -> UsageRefreshResult<CodexUsage> {
-        await self.fetchWithRetry(sourceName: "CodexBar") {
-            try await self.codexBar.fetch()
+        await self.fetchWithRetry(sourceName: "Codex") {
+            try await self.quotaSource.fetch()
         }
     }
 
