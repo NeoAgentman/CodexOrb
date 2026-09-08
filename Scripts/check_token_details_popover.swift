@@ -22,8 +22,8 @@ struct TokenDetailsPopoverChecks {
 
         let daily = OpenTokenDailyUsage(
             date: "2026-09-08",
-            totalTokens: 3_000,
-            cacheReadTokens: 5_000,
+            totalTokens: 293_700,
+            cacheReadTokens: 7_651_300,
             toolUsages: [
                 OpenTokenToolUsage(tool: "codex", totalTokens: 1_000, cacheReadTokens: 2_000),
                 OpenTokenToolUsage(tool: "hermes", totalTokens: 2_000, cacheReadTokens: 3_000),
@@ -58,8 +58,13 @@ struct TokenDetailsPopoverChecks {
         for expected in ["按工具", "按模型", "codex", "hermes", "sol", "luna"] {
             precondition(labels.contains(expected), "Token details is missing: \(expected)")
         }
-        precondition(!labels.contains { $0.contains("%") }, "Token percentages should not be shown")
-        precondition(labels.contains { $0.contains("8.0") && ($0.contains("千") || $0.contains("K")) },
+        let percentageLabels = labels.filter { $0.contains("%") }
+        precondition(percentageLabels.count == 1, "Only the cache hit rate percentage should be shown")
+        let expectedCacheAmount = AppLanguage.load() == .chinese ? "765.1万" : "7.7M"
+        precondition(percentageLabels.contains { $0.contains(expectedCacheAmount) && $0.contains("96.3%") },
+                     "Cache read amount and hit rate should be shown together")
+        let expectedTotalAmount = AppLanguage.load() == .chinese ? "794.5万" : "7.9M"
+        precondition(labels.contains(expectedTotalAmount),
                      "Token total should include a compact unit")
         print("Token details popover check passed: tool and model sections rendered")
     }

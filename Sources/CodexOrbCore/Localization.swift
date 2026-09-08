@@ -102,6 +102,7 @@ public enum L10n {
         "Token 用量详情": "Token usage details",
         "词元用量详情": "Token usage details",
         "今日合计（含缓存读取）": "Today's total (including cache reads)",
+        "缓存命中率": "Cache hit rate",
         "按工具": "By tool",
         "按模型": "By model",
         "无数据": "No data",

@@ -58,8 +58,13 @@ final class TokenDetailsView: NSView {
         self.label(today.map { Self.compactTokenCount($0.combinedTokens) } ?? L10n.text("暂不可用"),
                    x: 238, y: logicalHeight - 54, width: 104, size: 13,
                    weight: .semibold, alignment: .right)
+        self.label(L10n.text("缓存命中率"), x: 18, y: logicalHeight - 78,
+                   width: 180, size: 11.5, weight: .regular, color: .secondaryLabelColor)
+        self.label(Self.cacheHitRateSummary(for: today), x: 198, y: logicalHeight - 78,
+                   width: 144, size: 11.5, weight: .medium, color: .secondaryLabelColor,
+                   alignment: .right, numeric: true)
 
-        var cursor = logicalHeight - 84
+        var cursor = logicalHeight - 108
         cursor = self.section(
             L10n.text("按工具"), rows: tools, totalTokens: today?.combinedTokens ?? 0, top: cursor)
         _ = self.section(
@@ -75,7 +80,7 @@ final class TokenDetailsView: NSView {
         let tools = CGFloat(max(1, toolCount))
         let models = CGFloat(max(1, modelCount))
         // Keep the last model row comfortably above the card's lower edge.
-        return 16 + 24 + 12 + 18 + 12 + 18 + tools * Self.rowHeight + 14 + 18 + models * Self.rowHeight + 28
+        return 16 + 24 + 12 + 18 + 12 + 18 + 24 + tools * Self.rowHeight + 14 + 18 + models * Self.rowHeight + 28
     }
 
     @discardableResult
@@ -121,6 +126,19 @@ final class TokenDetailsView: NSView {
     private static func percentage(_ value: Int64, of total: Int64) -> Double? {
         guard total > 0 else { return nil }
         return min(100, max(0, Double(value) / Double(total) * 100))
+    }
+
+    private static func cacheHitRateSummary(for today: OpenTokenDailyUsage?) -> String {
+        guard let today else { return L10n.text("暂不可用") }
+        let cacheRead = Self.compactTokenCount(today.cacheReadTokens)
+        guard let percentage = Self.percentage(today.cacheReadTokens, of: today.combinedTokens) else {
+            return "\(cacheRead) · —"
+        }
+        return "\(cacheRead) · \(Self.formatPercentage(percentage))"
+    }
+
+    private static func formatPercentage(_ value: Double) -> String {
+        String(format: "%.1f%%", value)
     }
 
     private static func compactTokenCount(_ value: Int64) -> String {
