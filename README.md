@@ -118,8 +118,9 @@ and the capsule shows an amber status dot.
 
 ## Reset cards and confirmation
 
-Clicking a known, available card performs a read-only preflight and then opens a confirmation dialog
-showing the account and card expiry. **Only “Use 1 card” sends the mutation. Cancel, dismiss and the default
+Clicking a known, available card immediately opens a compact confirmation beside the capsule, showing
+only the question and account. Live validation and process waits happen after confirmation.
+**Only “Confirm” authorizes the mutation. Cancel, dismiss and the default
 Return key do not consume a card.** Card IDs stay attached when cards are sorted. Unknown details,
 expired cards, unsupported reset types and cards with no ID cannot be redeemed. Non-expiring known cards
 are shown separately from count-only placeholders.

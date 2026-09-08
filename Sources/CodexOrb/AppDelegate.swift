@@ -199,35 +199,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.updateResetRecovery()
                 self.refresh()
             }
-            // Wait until cancellation has closed any older quota connection.
-            await oldRefresh?.value
             do {
-                let pending = try await CodexAccountService.shared.pending(account: account)
+                let pending = try PendingResetStore().read(account.identityKey)
                 let target: String
-                let description: String
                 if let pending {
                     guard requestedID == nil else {
                         self.resetMessage(L10n.text("请先恢复上次重置操作，再使用其他卡片。"), account: account)
                         return
                     }
                     target = pending.creditID
-                    description = pending.outcome == nil
-                        ? L10n.text("将核实上次重置操作，复用原请求，不会发起新的独立消费。")
-                        : L10n.text("上次操作已有结果，将重新读取额度和卡片。")
                 } else {
                     guard let requestedID else { return }
-                    let usage = try await CodexAccountService.shared.fetch(account: account)
-                    guard let card = usage.resetCredits?.availableCards.first(where: { $0.id == requestedID && $0.isRedeemable() }),
-                          usage.resetCredits?.availableCount ?? 0 > 0 else { throw AppServerError.cardUnavailable }
+                    // The visible snapshot is sufficient to ask. The service validates live after confirmation.
+                    guard self.lastUsage?.resetCredits?.availableCards.contains(where: { $0.id == requestedID && $0.isRedeemable() }) == true else {
+                        throw AppServerError.cardUnavailable
+                    }
                     target = requestedID
-                    let expiry = card.expiresAt.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? L10n.text("无到期时间")
-                    description = L10n.text("将消耗 1 张重置卡，重置符合条件的额度窗口。") + "\n" + expiry
                 }
                 guard self.settings.accountHome == account.home else { throw AppServerError.accountChanged }
                 try Task.checkCancellation()
-                NSApp.activate(ignoringOtherApps: true)
-                guard ResetConfirmation.confirm(accountLabel: account.label, detail: description, recovering: pending != nil) else { return }
+                guard await self.panelController.confirmReset(account: account.label, recovering: pending != nil) else { return }
                 guard self.settings.accountHome == account.home else { throw AppServerError.accountChanged }
+                // Network and process waits happen only after explicit confirmation.
+                await oldRefresh?.value
+                try Task.checkCancellation()
                 let result = try await CodexAccountService.shared.consume(account: account, creditID: target)
                 if let usage = result.usage, self.settings.accountHome == account.home,
                    (try? CodexAccountStore.read(home: URL(fileURLWithPath: account.home)).identityKey) == account.identityKey {

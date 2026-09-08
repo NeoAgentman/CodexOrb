@@ -38,18 +38,25 @@ struct ResetCardChecks {
         click(recovery, x: 110)
         precondition(selected == ["first"])
         var sends = 0
-        for response in [NSApplication.ModalResponse.alertSecondButtonReturn, .abort, .cancel] {
-            if ResetConfirmation.confirm(accountLabel: "fixture@example.test", detail: "Use 1 card", recovering: false, present: { alert in
-                precondition(alert.informativeText.contains("fixture@example.test"))
-                precondition(alert.buttons[0].keyEquivalent.isEmpty)
-                precondition(alert.buttons[1].keyEquivalent == "\r")
-                return response
-            }) { sends += 1 }
+        var responses: [Bool] = []
+        let confirmation = ResetConfirmation(account: "fixture@example.test", recovering: false) { confirmed in
+            responses.append(confirmed)
+            if confirmed { sends += 1 }
         }
-        precondition(sends == 0, "Cancel, dismiss and abort must not authorize consumption")
-        if ResetConfirmation.confirm(accountLabel: "fixture", detail: "Use 1", recovering: false,
-                                     present: { _ in .alertFirstButtonReturn }) { sends += 1 }
-        precondition(sends == 1, "Only affirmative confirmation authorizes a send")
+        precondition(confirmation.accountLabel.stringValue == "fixture@example.test")
+        precondition(confirmation.subviews.compactMap { $0 as? NSTextField }.count == 2)
+        precondition(confirmation.confirmButton.keyEquivalent.isEmpty)
+        precondition(confirmation.cancelButton.keyEquivalent == "\r")
+        confirmation.cancelButton.performClick(nil)
+        confirmation.confirmButton.performClick(nil)
+        precondition(sends == 0 && responses == [false], "Cancel cannot consume or subsequently confirm")
+        let affirmative = ResetConfirmation(account: "fixture", recovering: false) { if $0 { sends += 1 } }
+        affirmative.confirmButton.performClick(nil)
+        affirmative.confirmButton.performClick(nil)
+        precondition(sends == 1, "Affirmative confirmation fires once")
+        let escape = ResetConfirmation(account: "fixture", recovering: false) { if $0 { sends += 1 } }
+        escape.cancelOperation(nil)
+        precondition(sends == 1, "Escape cannot consume")
         print("Reset card UI checks passed: ID binding, disabled cards, drag-out, pending recovery, confirmation and cancel")
     }
 }

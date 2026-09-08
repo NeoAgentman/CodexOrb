@@ -50,6 +50,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private enum DetailKind { case resets, quota }
     private var detailKind: DetailKind = .resets
     private var resetPopover: NSPopover?
+    private var confirmationCompletion: ((Bool) -> Void)?
     private var isHoveringCapsule = false
     private var isCapsuleExpanded = false
     private var isExpandedByDefault = false
@@ -230,6 +231,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     private func configureDetailContent(_ popover: NSPopover) {
+        guard confirmationCompletion == nil else { return }
         guard self.detailKind == .quota else {
             self.configureResetContent(popover)
             return
@@ -247,6 +249,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     private func configureResetContent(_ popover: NSPopover) {
+        guard confirmationCompletion == nil else { return }
         let cards = ResetCardsView(credits: self.orbView.displayState.usage?.resetCredits,
                                   busy: resetBusy, recovery: resetRecoveryAvailable,
                                   onRecover: { [weak self] in self?.onConsumeReset?(nil) },
@@ -266,9 +269,54 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
+        guard let closed = notification.object as? NSPopover, closed === self.resetPopover else { return }
         self.resetPopover = nil
+        let completion = confirmationCompletion
+        confirmationCompletion = nil
+        completion?(false)
         let hovering = self.panel.frame.contains(NSEvent.mouseLocation)
         self.orbView(self.orbView, didChangeHover: hovering)
+    }
+
+    func confirmReset(account: String, recovering: Bool) async -> Bool {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else { continuation.resume(returning: false); return }
+                resetPopover?.close()
+                hoverDismissTask?.cancel()
+                let popover = NSPopover()
+                popover.behavior = .transient
+                popover.animates = false
+                popover.delegate = self
+                let content = ResetConfirmation(account: account, recovering: recovering) { [weak self] confirmed in
+                    self?.finishResetConfirmation(confirmed)
+                }
+                let controller = NSViewController()
+                controller.view = content
+                popover.contentViewController = controller
+                popover.contentSize = content.frame.size
+                detailKind = .resets
+                confirmationCompletion = { continuation.resume(returning: $0) }
+                resetPopover = popover
+                let rect = orbView.resetCardsRect
+                let anchor = panel.convertToScreen(orbView.convert(rect, to: nil))
+                let edge = Self.resetPopoverEdge(anchor: anchor, visibleFrame: panel.screen?.visibleFrame ?? panel.frame,
+                                                contentHeight: content.frame.height)
+                popover.show(relativeTo: rect, of: orbView, preferredEdge: edge)
+                content.window?.makeKey()
+                content.window?.makeFirstResponder(content)
+                if !popover.isShown { finishResetConfirmation(false) }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.finishResetConfirmation(false) }
+        }
+    }
+
+    private func finishResetConfirmation(_ confirmed: Bool) {
+        let completion = confirmationCompletion
+        confirmationCompletion = nil
+        resetPopover?.close()
+        completion?(confirmed)
     }
 
     func orbViewDidRequestRefresh(_ view: OrbView) {

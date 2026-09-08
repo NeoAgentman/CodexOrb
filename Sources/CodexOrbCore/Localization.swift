@@ -56,6 +56,9 @@ public enum L10n {
     }
     public static func text(_ message: Message) -> String { message.rendered() }
     static let english: [String: String] = [
+        "确认使用这个账号的重置卡？": "Use a reset card for this account?",
+        "恢复这个账号的重置操作？": "Recover this account’s reset?",
+        "确认": "Confirm",
         "未找到兼容的 Codex，请安装或更新 Codex CLI / Codex App。": "No compatible Codex found. Install or update Codex CLI / Codex App.",
         "Codex 协议请求失败，请刷新或检查登录状态。": "Codex request failed. Refresh or check your sign-in.",
         "Codex 请求超时。": "Codex request timed out.",
