@@ -9,6 +9,7 @@ enum CodexOrbCoreChecks {
             print("CodexOrb live GUI environment check passed")
             return
         }
+        try LocalizationChecks.run()
         try await AccountChecks.run()
         try await CLIUpdateChecks.run()
         try await self.checkBundledToolIsolation()

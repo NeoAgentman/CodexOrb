@@ -96,7 +96,7 @@ enum CLIUpdateChecks {
         defer { flock(descriptor, LOCK_UN); close(descriptor) }
         guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else { throw CLIUpdateError.busy }
         let busy = await updater.update(.opentoken)
-        try self.expect(busy.outcome == .failed && busy.message.contains("另一个更新"), "cross-process lock refuses concurrent mutation")
+        try self.expect(busy.outcome == .failed && busy.localizedMessage.rendered(in: .chinese).contains("另一个更新"), "cross-process lock refuses concurrent mutation")
         try self.expect(try Data(contentsOf: pointer) == oldPointer, "busy update does not change installation")
         flock(descriptor, LOCK_UN)
 

@@ -6,18 +6,19 @@ import ServiceManagement
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let launchAtLoginSwitch = NSSwitch()
     private let launchAtLoginStatus = NSTextField(wrappingLabelWithString: "")
-    private let loginSettingsButton = NSButton(title: "打开系统登录项设置…", target: nil, action: nil)
-    private let dailyQuotaToggle = NSButton(checkboxWithTitle: "每天 00:00 记录所有 Codex 账号周额度", target: nil, action: nil)
+    private let loginSettingsButton = NSButton(title: L10n.text("打开系统登录项设置…"), target: nil, action: nil)
+    private let dailyQuotaToggle = NSButton(checkboxWithTitle: L10n.text("每天 00:00 记录所有 Codex 账号周额度"), target: nil, action: nil)
     private let providerField = NSPopUpButton()
     private let currentAccountLabel = NSTextField(wrappingLabelWithString: "")
-    private let addAccountButton = NSButton(title: "添加账号…", target: nil, action: nil)
-    private let reloadAccountsButton = NSButton(title: "刷新账号", target: nil, action: nil)
+    private let addAccountButton = NSButton(title: L10n.text("添加账号…"), target: nil, action: nil)
+    private let reloadAccountsButton = NSButton(title: L10n.text("刷新账号"), target: nil, action: nil)
     private var accounts: [CodexAccount] = []
     private var isAddingAccount = false
-    private let defaultExpandedToggle = NSButton(checkboxWithTitle: "默认展开胶囊", target: nil, action: nil)
+    private let defaultExpandedToggle = NSButton(checkboxWithTitle: L10n.text("默认展开胶囊"), target: nil, action: nil)
+    private let languagePopup = NSPopUpButton()
     private let refreshPopup = NSPopUpButton()
     private let validationLabel = NSTextField(labelWithString: "")
-    private let updateButton = NSButton(title: "检查更新", target: nil, action: nil)
+    private let updateButton = NSButton(title: L10n.text("检查更新"), target: nil, action: nil)
     private let updateSpinner = NSProgressIndicator()
     private let codexBarUpdateLabel = NSTextField(wrappingLabelWithString: "")
     private let openTokenUpdateLabel = NSTextField(wrappingLabelWithString: "")
@@ -29,11 +30,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.onApply = onApply
         self.savedAccountHome = settings.accountHome
         let window = NSWindow(
-            contentRect: CGRect(x: 0, y: 0, width: 560, height: 656),
+            contentRect: CGRect(x: 0, y: 0, width: 600, height: 720),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false)
-        window.title = "CodexOrb 设置"
+        window.title = L10n.text("CodexOrb 设置")
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
@@ -59,9 +60,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func buildContent(settings: AppSettings) {
         guard let contentView = self.window?.contentView else { return }
 
+        self.languagePopup.addItems(withTitles: ["中文", "English"])
+        self.languagePopup.selectItem(at: settings.language == .chinese ? 0 : 1)
         self.reloadAccounts(selectedHome: settings.accountHome)
         let current = self.accounts.first { $0.home == settings.accountHome }
-        self.currentAccountLabel.stringValue = "当前显示：" + (current?.label ?? "未登录或账号不可用")
+        self.currentAccountLabel.stringValue = L10n.text("当前显示：") + (current?.label ?? L10n.text("未登录或账号不可用"))
         self.currentAccountLabel.font = .systemFont(ofSize: 11)
         self.currentAccountLabel.textColor = .secondaryLabelColor
         self.currentAccountLabel.maximumNumberOfLines = 2
@@ -136,39 +139,36 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
         self.launchAtLoginSwitch.target = self
         self.launchAtLoginSwitch.action = #selector(self.toggleLaunchAtLogin(_:))
-        self.launchAtLoginSwitch.setAccessibilityLabel("开机启动")
+        self.launchAtLoginSwitch.setAccessibilityLabel(L10n.text("开机启动"))
         self.launchAtLoginStatus.font = .systemFont(ofSize: 11)
         self.launchAtLoginStatus.maximumNumberOfLines = 2
         self.loginSettingsButton.target = self
         self.loginSettingsButton.action = #selector(self.openLoginSettings(_:))
         self.renderLaunchAtLogin()
         let startupSection = section([
-            row([text("开机启动", heading: true), spacer(), self.launchAtLoginSwitch]),
+            row([text(L10n.text("开机启动"), heading: true), spacer(), self.launchAtLoginSwitch]),
             self.launchAtLoginStatus,
             self.loginSettingsButton,
         ])
         let accountSection = section([
-            row([text("Codex 账号", heading: true), spacer(), self.addAccountButton, self.reloadAccountsButton]),
+            row([text(L10n.text("Codex 账号"), heading: true), spacer(), self.addAccountButton, self.reloadAccountsButton]),
             self.currentAccountLabel,
             self.providerField,
-            text("选择账号并保存后，胶囊显示该账号的额度与今日消耗。"),
         ])
         let refreshSection = section([
-            text("刷新与记录", heading: true),
-            row([NSTextField(labelWithString: "自动刷新"), spacer(), self.refreshPopup]),
+            text(L10n.text("刷新与记录"), heading: true),
+            row([NSTextField(labelWithString: L10n.text("自动刷新")), spacer(), self.refreshPopup]),
             self.dailyQuotaToggle,
-            text("各账号独立记录，单个失败不影响其它账号；睡眠时延至唤醒。"),
         ])
         let capsuleSection = section([
-            text("胶囊显示", heading: true),
+            text(L10n.text("胶囊显示"), heading: true),
+            row([text(L10n.text("语言"), heading: true), spacer(), self.languagePopup]),
             self.defaultExpandedToggle,
-            text("关闭时保持悬停展开、移出收起；展开方向保持向左。"),
         ])
         let toolsSection = section([
-            row([text("工具更新", heading: true), spacer(), self.updateSpinner, self.updateButton]),
+            row([text(L10n.text("工具更新"), heading: true), spacer(), self.updateSpinner, self.updateButton]),
             self.codexBarUpdateLabel,
             self.openTokenUpdateLabel,
-            text("工具分别更新，失败时保留旧版。关闭窗口不影响更新。"),
         ])
         let sections = NSStackView(views: [startupSection, accountSection, capsuleSection, refreshSection, toolsSection])
         sections.orientation = .vertical
@@ -179,9 +179,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         for section in [startupSection, accountSection, capsuleSection, refreshSection, toolsSection] {
             section.widthAnchor.constraint(equalTo: sections.widthAnchor).isActive = true
         }
-        let cancelButton = NSButton(title: "取消", target: self, action: #selector(self.cancel(_:)))
+        let cancelButton = NSButton(title: L10n.text("取消"), target: self, action: #selector(self.cancel(_:)))
         cancelButton.keyEquivalent = "\u{1b}"
-        let saveButton = NSButton(title: "保存", target: self, action: #selector(self.save(_:)))
+        let saveButton = NSButton(title: L10n.text("保存"), target: self, action: #selector(self.save(_:)))
         saveButton.keyEquivalent = "\r"
         saveButton.bezelStyle = .rounded
         let buttons = row([cancelButton, saveButton])
@@ -206,6 +206,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             self.updateSpinner.widthAnchor.constraint(equalToConstant: 16),
             self.updateSpinner.heightAnchor.constraint(equalToConstant: 16),
         ])
+        self.fitWindowToContent()
+    }
+
+    /// Fit the fixed-width window to the visible rows instead of stretching the first card.
+    private func fitWindowToContent() {
+        guard let window = self.window, let contentView = window.contentView,
+              !contentView.subviews.isEmpty else { return }
+        contentView.layoutSubtreeIfNeeded()
+        let height = contentView.fittingSize.height
+        guard height > 0 else { return }
+        let top = window.frame.maxY
+        window.setContentSize(NSSize(width: 600, height: height))
+        window.setFrameOrigin(NSPoint(x: window.frame.minX, y: top - window.frame.height))
     }
 
     func windowDidBecomeKey(_ notification: Notification) {
@@ -220,16 +233,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.launchAtLoginStatus.textColor = .secondaryLabelColor
         switch status {
         case .enabled:
-            self.launchAtLoginStatus.stringValue = "已开启：登录 Mac 后自动启动。此开关立即生效。"
+            self.launchAtLoginStatus.stringValue = L10n.text("已开启：登录 Mac 后自动启动。此开关立即生效。")
         case .requiresApproval:
-            self.launchAtLoginStatus.stringValue = "等待系统批准：请在系统登录项设置中允许 CodexOrb。"
+            self.launchAtLoginStatus.stringValue = L10n.text("等待系统批准：请在系统登录项设置中允许 CodexOrb。")
         case .notRegistered:
-            self.launchAtLoginStatus.stringValue = "已关闭：登录 Mac 后不自动启动。此开关立即生效。"
+            self.launchAtLoginStatus.stringValue = L10n.text("已关闭：登录 Mac 后不自动启动。此开关立即生效。")
         case .notFound:
-            self.launchAtLoginStatus.stringValue = "尚未注册开机启动，可打开开关启用。此开关立即生效。"
+            self.launchAtLoginStatus.stringValue = L10n.text("尚未注册开机启动，可打开开关启用。此开关立即生效。")
         @unknown default:
-            self.launchAtLoginStatus.stringValue = "无法读取登录项状态，请在系统设置中检查。"
+            self.launchAtLoginStatus.stringValue = L10n.text("无法读取登录项状态，请在系统设置中检查。")
         }
+        self.fitWindowToContent()
     }
 
     @objc private func toggleLaunchAtLogin(_ sender: NSSwitch) {
@@ -247,7 +261,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             if SMAppService.mainApp.status != .requiresApproval {
                 self.launchAtLoginStatus.isHidden = false
                 self.launchAtLoginStatus.textColor = .systemRed
-                self.launchAtLoginStatus.stringValue = "无法更改开机启动：\(error.localizedDescription)"
+                self.launchAtLoginStatus.stringValue = L10n.text("无法更改开机启动：\(error.localizedDescription)")
+                self.fitWindowToContent()
             }
         }
     }
@@ -258,14 +273,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private func renderCLIUpdates() {
         self.updateButton.isEnabled = !self.updateController.isRunning
-        self.updateButton.title = self.updateController.isRunning ? "更新中…" : "检查更新"
+        self.updateButton.title = self.updateController.isRunning ? L10n.text("更新中…") : L10n.text("检查更新")
         if self.updateController.isRunning { self.updateSpinner.startAnimation(nil) }
         else { self.updateSpinner.stopAnimation(nil) }
         for (tool, label) in [(CLITool.codexbar, self.codexBarUpdateLabel), (.opentoken, self.openTokenUpdateLabel)] {
-            label.stringValue = "\(tool.title)：\(self.updateController.messages[tool] ?? "")"
+            label.stringValue = L10n.text("\(tool.title)：\(self.updateController.messages[tool] ?? "")")
             label.textColor = self.updateController.failed.contains(tool) ? .systemRed : .secondaryLabelColor
             label.toolTip = label.stringValue
         }
+        self.fitWindowToContent()
     }
 
     @objc private func updateCLIs(_ sender: Any?) {
@@ -274,13 +290,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func save(_ sender: Any?) {
         _ = sender
-        guard let accountHome = self.providerField.selectedItem?.representedObject as? String,
-              (try? CodexAccountStore.read(home: URL(fileURLWithPath: accountHome))) != nil else {
-            self.validationLabel.stringValue = "请先添加或登录一个 Codex 账号。"
+        let accountHome = self.providerField.selectedItem?.representedObject as? String ?? self.savedAccountHome
+        if accountHome != self.savedAccountHome,
+           (try? CodexAccountStore.read(home: URL(fileURLWithPath: accountHome))) == nil {
+            self.validationLabel.stringValue = L10n.text("请先添加或登录一个 Codex 账号。")
             return
         }
         guard let interval = self.refreshPopup.selectedItem?.representedObject as? TimeInterval else { return }
-        let settings = AppSettings(dailyQuotaEnabled: self.dailyQuotaToggle.state == .on,
+        let settings = AppSettings(language: self.languagePopup.indexOfSelectedItem == 1 ? .english : .chinese,
+                                   dailyQuotaEnabled: self.dailyQuotaToggle.state == .on,
                                    accountHome: accountHome,
                                    capsuleExpandedByDefault: self.defaultExpandedToggle.state == .on,
                                    refreshInterval: interval)
@@ -288,7 +306,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             try self.onApply(settings)
             self.close()
         } catch {
-            self.validationLabel.stringValue = "无法更新后台任务，请重试。"
+            self.validationLabel.stringValue = L10n.text("无法更新后台任务，请重试。")
             self.validationLabel.toolTip = error.localizedDescription
             let alert = NSAlert(error: error)
             alert.runModal()
@@ -306,7 +324,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         if let index = self.accounts.firstIndex(where: { $0.home == selectedHome }) {
             self.providerField.selectItem(at: index)
         } else {
-            self.providerField.insertItem(withTitle: "所选账号不可用，请选择或添加账号", at: 0)
+            self.providerField.insertItem(withTitle: L10n.text("所选账号不可用，请选择或添加账号"), at: 0)
             self.providerField.selectItem(at: 0)
         }
     }
@@ -329,7 +347,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.isAddingAccount = true
         self.addAccountButton.isEnabled = false
         self.validationLabel.textColor = .secondaryLabelColor
-        self.validationLabel.stringValue = "请在浏览器中登录要添加的账号…"
+        self.validationLabel.stringValue = L10n.text("请在浏览器中登录要添加的账号…")
         Task { @MainActor in
             var loginHome: URL?
             defer {
@@ -347,11 +365,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 guard result.status == 0 else { throw CodexAccountError.loginFailed }
                 _ = try CodexAccountStore.read(home: home)
                 self.reloadAccounts(selectedHome: home.path)
-                self.validationLabel.stringValue = "账号已添加，点击“保存” 在胶囊中显示。"
+                self.validationLabel.stringValue = L10n.text("账号已添加，点击“保存” 在胶囊中显示。")
             } catch {
                 if let loginHome { try? FileManager.default.trashItem(at: loginHome, resultingItemURL: nil) }
                 self.validationLabel.textColor = .systemRed
-                self.validationLabel.stringValue = "登录未完成，请重试并在浏览器中授权。"
+                self.validationLabel.stringValue = L10n.text("登录未完成，请重试并在浏览器中授权。")
             }
         }
     }

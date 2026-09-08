@@ -144,6 +144,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func apply(_ settings: AppSettings) throws {
+        var previousWithLanguage = self.settings
+        previousWithLanguage.language = settings.language
+        if previousWithLanguage == settings {
+            self.settings = settings
+            settings.save()
+            self.panelController.reloadLanguage()
+            return
+        }
         try DailyQuotaLaunchAgent.setEnabled(settings.dailyQuotaEnabled, accountHome: settings.accountHome)
         let accountChanged = settings.accountHome != self.settings.accountHome
         if accountChanged || settings.dailyQuotaEnabled != self.settings.dailyQuotaEnabled {
@@ -151,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.settings = settings
         settings.save()
+        self.panelController.reloadLanguage()
         self.panelController.updateDefaultExpansion(settings.capsuleExpandedByDefault)
         self.usageSource = CombinedUsageSource(accountHome: settings.accountHome)
         self.scheduleRefreshTimer()

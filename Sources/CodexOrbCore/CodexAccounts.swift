@@ -92,9 +92,9 @@ public enum CodexAccountError: LocalizedError {
     case invalidAccount, missingCLI, loginFailed
     public var errorDescription: String? {
         switch self {
-        case .invalidAccount: "账号登录已失效或尚未完成，请重新登录。"
-        case .missingCLI: "未找到 Codex CLI，请先安装 Codex。"
-        case .loginFailed: "登录未完成，请重试并在浏览器中完成授权。"
+        case .invalidAccount: L10n.text("账号登录已失效或尚未完成，请重新登录。")
+        case .missingCLI: L10n.text("未找到 Codex CLI，请先安装 Codex。")
+        case .loginFailed: L10n.text("登录未完成，请重试并在浏览器中完成授权。")
         }
     }
 }

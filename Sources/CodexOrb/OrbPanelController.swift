@@ -69,6 +69,13 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
             object: nil)
     }
 
+    func reloadLanguage() {
+        self.resetPopover?.close()
+        // Reassigning refreshes both the drawing and accessibility description.
+        let state = self.orbView.displayState
+        self.orbView.displayState = state
+    }
+
     func updateDailyQuota(_ daily: DailyQuotaUsage?, enabled: Bool) {
         for view in [self.orbView] {
             view.dailyQuotaEnabled = enabled

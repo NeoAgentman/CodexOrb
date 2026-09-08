@@ -63,7 +63,7 @@ public struct CodexBarCLIUsageSource: CodexUsageSourcing {
             "usage", "--provider", "codex", "--source", "oauth", "--format", "json", "--json-only",
         ], timeout: self.timeout, environment: environment)
         guard result.status == 0 else {
-            throw CodexBarCLIError.commandFailed(result.status, "Codex 额度查询失败，请检查所选账号的登录状态。")
+            throw CodexBarCLIError.commandFailed(result.status, L10n.text("Codex 额度查询失败，请检查所选账号的登录状态。"))
         }
         let usage = try CodexUsageParser.parse(result.stdout)
         if let account {

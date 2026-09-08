@@ -209,14 +209,14 @@ final class OrbView: NSView, NSMenuDelegate {
     override func rightMouseDown(with event: NSEvent) {
         let menu = NSMenu()
         menu.delegate = self
-        let refresh = NSMenuItem(title: "刷新", action: #selector(self.refresh(_:)), keyEquivalent: "r")
+        let refresh = NSMenuItem(title: L10n.text("刷新"), action: #selector(self.refresh(_:)), keyEquivalent: "r")
         refresh.target = self
         menu.addItem(refresh)
-        let settings = NSMenuItem(title: "设置…", action: #selector(self.settings(_:)), keyEquivalent: ",")
+        let settings = NSMenuItem(title: L10n.text("设置…"), action: #selector(self.settings(_:)), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "退出 CodexOrb", action: #selector(self.quit(_:)), keyEquivalent: "q")
+        let quit = NSMenuItem(title: L10n.text("退出 CodexOrb"), action: #selector(self.quit(_:)), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
         // Keep the menu's available space independent of the small nonactivating panel.
@@ -376,12 +376,8 @@ final class OrbView: NSView, NSMenuDelegate {
                       in: CGRect(x: front.minX, y: front.minY + 21, width: front.width, height: 15),
                       font: .monospacedDigitSystemFont(ofSize: 10, weight: .semibold),
                       color: colors.primaryText, alignment: .center)
-        let expiry = count > 0 ? ResetCardsView.expirationText(credits?.nextExpiration)
-            .replacingOccurrences(of: "天到期", with: "天")
-            .replacingOccurrences(of: "小时到期", with: "时")
-            .replacingOccurrences(of: "期限未知", with: "未知")
-            .replacingOccurrences(of: "不足1小时", with: "<1时")
-            .replacingOccurrences(of: "小时", with: "时") : (credits == nil ? "未知" : "暂无")
+        let expiry = count > 0 ? ResetCardsView.expirationText(credits?.nextExpiration, compact: true)
+            : (credits == nil ? L10n.text("未知") : L10n.text("暂无"))
         self.drawText(expiry,
                       in: CGRect(x: front.minX, y: front.minY + 6, width: front.width, height: 12),
                       font: .monospacedDigitSystemFont(ofSize: 8, weight: .medium),
@@ -571,38 +567,38 @@ final class OrbView: NSView, NSMenuDelegate {
         if let usage = self.displayState.usage {
             var parts: [String] = []
             if let ringRemaining = usage.ringQuota?.remainingPercent {
-                parts.append("\(Int(ringRemaining.rounded())) % \(usage.provider) 额度剩余")
+                parts.append(L10n.text("\(Int(ringRemaining.rounded())) % \(usage.provider) 额度剩余"))
             }
             if let pace = usage.weeklyPaceDeltaPercent {
                 let rounded = Int(abs(pace).rounded())
                 if pace >= 0.5 {
-                    parts.append("\(rounded) % 周用量超出预期")
+                    parts.append(L10n.text("\(rounded) % 周用量超出预期"))
                 } else if pace <= -0.5 {
-                    parts.append("\(rounded) % 周用量低于预期")
+                    parts.append(L10n.text("\(rounded) % 周用量低于预期"))
                 } else {
-                    parts.append("周用量符合预期")
+                    parts.append(L10n.text("周用量符合预期"))
                 }
             }
             if let today = usage.todayTokens {
-                parts.append("\(today.combinedTokens) 今日词元，包含缓存读取")
+                parts.append(L10n.text("\(today.combinedTokens) 今日词元，包含缓存读取"))
                 if !today.modelUsages.isEmpty {
-                    parts.append("模型：\(today.modelUsages.map(\.displayName).joined(separator: " + "))")
+                    parts.append(L10n.text("模型：\(today.modelUsages.map(\.displayName).joined(separator: " + "))"))
                 }
             }
             if let resets = usage.resetCredits {
-                parts.append("\(resets.availableCount) 次可用重置")
+                parts.append(L10n.text("\(resets.availableCount) 次可用重置"))
                 if let expiry = resets.nextExpiration {
-                    parts.append("下次重置到期：\(expiry.formatted(date: .complete, time: .standard))")
+                    parts.append(L10n.text("下次重置到期：\(expiry.formatted(Date.FormatStyle(date: .complete, time: .standard).locale(AppLanguage.load().locale)))"))
                 }
             }
-            if self.dailyQuotaEnabled { parts.append("今日消耗周额度 \(self.dailyQuotaText)") }
-            value = parts.isEmpty ? "用量暂不可用" : parts.joined(separator: ", ")
+            if self.dailyQuotaEnabled { parts.append(L10n.text("今日消耗周额度 \(self.dailyQuotaText)")) }
+            value = parts.isEmpty ? L10n.text("用量暂不可用") : parts.joined(separator: ", ")
         } else if case let .failed(_, message) = self.displayState {
             value = message
         } else {
-            value = "加载中"
+            value = L10n.text("加载中")
         }
-        self.setAccessibilityLabel("AI 额度与词元用量")
+        self.setAccessibilityLabel(L10n.text("AI 额度与词元用量"))
         self.setAccessibilityValue(value)
     }
 

@@ -77,13 +77,13 @@ final class ResetCardsView: NSView {
     private static let ticketWidth: CGFloat = 68
     private static let gap: CGFloat = 8
 
-    static func expirationText(_ expiration: Date?, now: Date = Date()) -> String {
-        guard let expiration else { return "期限未知" }
+    static func expirationText(_ expiration: Date?, now: Date = Date(), compact: Bool = false) -> String {
+        guard let expiration else { return compact ? L10n.text("未知") : L10n.text("期限未知") }
         let remaining = expiration.timeIntervalSince(now)
-        if remaining <= 0 { return "已到期" }
-        if remaining < 3600 { return "不足1小时" }
-        if remaining < 86400 { return "\(Int(remaining / 3600))小时到期" }
-        return "\(Int(remaining / 86400))天到期"
+        if remaining <= 0 { return L10n.text("已到期") }
+        if remaining < 3600 { return compact ? L10n.text("<1时") : L10n.text("不足1小时") }
+        if remaining < 86400 { return compact ? L10n.text("\(Int(remaining / 3600))时") : L10n.text("\(Int(remaining / 3600))小时到期") }
+        return compact ? L10n.text("\(Int(remaining / 86400))天") : L10n.text("\(Int(remaining / 86400))天到期")
     }
 
     init(credits: CodexResetCredits?) {
@@ -94,8 +94,8 @@ final class ResetCardsView: NSView {
                                 height: 126))
         self.setAccessibilityElement(true)
         self.setAccessibilityRole(.group)
-        self.setAccessibilityLabel("可用重置卡片")
-        self.setAccessibilityValue(credits.map { "\($0.availableCount)次可用重置" } ?? "重置信息暂不可用")
+        self.setAccessibilityLabel(L10n.text("可用重置卡片"))
+        self.setAccessibilityValue(credits.map { L10n.text("\($0.availableCount)次可用重置") } ?? L10n.text("重置信息暂不可用"))
         let dates = credits?.availableExpirations ?? []
         for index in 0..<count {
             let expiration = index < dates.count ? dates[index] : nil
@@ -105,7 +105,7 @@ final class ResetCardsView: NSView {
             label.alignment = .center
             label.textColor = Self.color(expiration, nearest: index == 0)
             label.frame = NSRect(x: rect.minX + 2, y: rect.minY + 30, width: rect.width - 4, height: 28)
-            label.setAccessibilityLabel("第\(index + 1)张重置卡，\(Self.expirationText(expiration))")
+            label.setAccessibilityLabel(L10n.text("第\(index + 1)张重置卡，\(Self.expirationText(expiration))"))
             self.addSubview(label)
         }
     }
@@ -126,9 +126,9 @@ final class ResetCardsView: NSView {
     private static func countdown(_ expiration: Date?) -> String {
         guard let expiration else { return "—" }
         let remaining = expiration.timeIntervalSinceNow
-        if remaining <= 0 { return "已到期" }
-        if remaining < 3600 { return "<1时" }
-        if remaining < 86400 { return "\(Int(remaining / 3600))时" }
+        if remaining <= 0 { return L10n.text("已到期") }
+        if remaining < 3600 { return L10n.text("<1时") }
+        if remaining < 86400 { return L10n.text("\(Int(remaining / 3600))时") }
         return "\(Int(remaining / 86400))"
     }
 
@@ -146,18 +146,19 @@ final class ResetCardsView: NSView {
         super.draw(dirtyRect)
         let dark = self.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let count = max(0, self.credits?.availableCount ?? 0)
-        self.text("重置卡 · 剩余天数", rect: NSRect(x: 12, y: 103, width: 134, height: 15),
+        self.text(L10n.text("重置卡 · 剩余天数"), rect: NSRect(x: 12, y: 103, width: 134, height: 15),
                   size: 9, color: .labelColor, weight: .semibold, alignment: .left)
-        self.text(self.credits.map { "\($0.availableCount) 次可用" } ?? "暂不可用",
+        self.text(self.credits.map { L10n.text("\($0.availableCount) 次可用") } ?? L10n.text("暂不可用"),
                   rect: NSRect(x: self.bounds.width - 82, y: 103, width: 70, height: 14),
                   size: 9, color: .secondaryLabelColor, alignment: .right)
         if count == 0 {
-            self.text(self.credits == nil ? "等待重置信息更新" : "暂无可用重置",
+            self.text(self.credits == nil ? L10n.text("等待重置信息更新") : L10n.text("暂无可用重置"),
                       rect: NSRect(x: 12, y: 49, width: self.bounds.width - 24, height: 18),
                       size: 11, color: .secondaryLabelColor)
         }
         let dates = self.credits?.availableExpirations ?? []
         let formatter = DateFormatter()
+        formatter.locale = AppLanguage.load().locale
         formatter.dateFormat = "MM.dd"
         for index in 0..<count {
             let rect = self.ticketRect(index).offsetBy(dx: 0, dy: self.cardLift(index))
@@ -212,9 +213,9 @@ final class ResetCardsView: NSView {
             divider.lineWidth = 0.5
             NSColor.labelColor.withAlphaComponent(0.13).setStroke()
             divider.stroke()
-            self.text(nearest ? "最近到期" : "", rect: NSRect(x: rect.minX, y: rect.minY + 63, width: rect.width, height: 13),
+            self.text(nearest ? L10n.text("最近到期") : "", rect: NSRect(x: rect.minX, y: rect.minY + 63, width: rect.width, height: 13),
                       size: 7, color: nearest ? accent : .tertiaryLabelColor, weight: .medium)
-            self.text(expiration.map { formatter.string(from: $0) } ?? "日期待更新",
+            self.text(expiration.map { formatter.string(from: $0) } ?? L10n.text("日期待更新"),
                       rect: NSRect(x: rect.minX, y: rect.minY + 6, width: rect.width, height: 11),
                       size: 7.5, color: .secondaryLabelColor)
         }

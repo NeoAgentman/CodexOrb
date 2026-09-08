@@ -5,7 +5,7 @@ import Foundation
 @MainActor
 final class CLIUpdateController {
     static let shared = CLIUpdateController()
-    private(set) var messages: [CLITool: String] = [:]
+    private(set) var messages: [CLITool: L10n.Message] = [:]
     private(set) var failed: Set<CLITool> = []
     private(set) var isRunning = false
     var onChange: (() -> Void)?
@@ -37,7 +37,7 @@ final class CLIUpdateController {
                     }
                 }
                 for await (tool, result) in group {
-                    self.messages[tool] = result.message
+                    self.messages[tool] = result.localizedMessage
                     if case .failed = result.outcome { self.failed.insert(tool) }
                     self.onChange?()
                 }

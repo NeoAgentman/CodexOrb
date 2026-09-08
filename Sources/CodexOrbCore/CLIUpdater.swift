@@ -3,7 +3,9 @@ import Foundation
 public enum CLIUpdateError: LocalizedError, Sendable {
     case busy, storage, invalidVersion, channelUnavailable, checksum, archive, validation, timeout, outputTooLarge
 
-    public var errorDescription: String? {
+    public var errorDescription: String? { self.message.rendered() }
+
+    public var message: L10n.Message {
         switch self {
         case .busy: "另一个更新正在进行"
         case .storage: "无法写入更新目录"
@@ -22,7 +24,14 @@ public struct CLIUpdateResult: Sendable {
     public enum Outcome: Sendable { case updated, unchanged, failed }
     public let outcome: Outcome
     public let version: String
-    public let message: String
+    public let localizedMessage: L10n.Message
+    public var message: String { localizedMessage.rendered() }
+
+    public init(outcome: Outcome, version: String, message: L10n.Message) {
+        self.outcome = outcome
+        self.version = version
+        self.localizedMessage = message
+    }
 }
 
 public struct CodexBarRelease: Decodable, Sendable {
@@ -54,7 +63,7 @@ public struct CodexBarRelease: Decodable, Sendable {
 }
 
 public struct CLIUpdater: Sendable {
-    public typealias Progress = @Sendable (String) async -> Void
+    public typealias Progress = @Sendable (L10n.Message) async -> Void
     public typealias Prepare = @Sendable (CLITool, String, URL, URL, Progress) async throws -> String?
     public typealias Validate = @Sendable (CLITool, URL, String, String) async throws -> Void
 
@@ -112,7 +121,7 @@ public struct CLIUpdater: Sendable {
         } catch {
             let version = self.store.activeVersion(for: tool)
             // Upstream stderr may contain account URLs. Only expose our own bounded descriptions.
-            let reason = (error as? CLIUpdateError)?.errorDescription ?? "网络或文件操作失败，请重试"
+            let reason: L10n.Message = (error as? CLIUpdateError)?.message ?? "网络或文件操作失败，请重试"
             return CLIUpdateResult(outcome: .failed, version: version, message: "\(reason)；继续使用 \(version)")
         }
     }
