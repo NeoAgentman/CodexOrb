@@ -12,6 +12,9 @@
 .idea/
 .vscode/
 
+# Local research notes
+/research/easycliproxyapi-codex-reset-credits.md
+
 # Credentials, private configuration and runtime data
 .env
 .env.*
