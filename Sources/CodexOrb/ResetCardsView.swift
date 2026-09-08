@@ -175,8 +175,7 @@ final class ResetCardsView: NSView {
         super.draw(dirtyRect)
         let dark = self.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let count = max(0, self.credits?.availableCount ?? 0)
-        self.text(L10n.text("重置卡 · 剩余天数"), rect: NSRect(x: 12, y: 103, width: 134, height: 15),
-                  size: 9, color: .labelColor, weight: .semibold, alignment: .left)
+        self.drawResetHeader()
         self.text(self.credits.map { L10n.text("\($0.availableCount) 次可用") } ?? L10n.text("暂不可用"),
                   rect: NSRect(x: self.bounds.width - 82, y: 103, width: 70, height: 14),
                   size: 9, color: .secondaryLabelColor, alignment: .right)
@@ -248,6 +247,46 @@ final class ResetCardsView: NSView {
                       rect: NSRect(x: rect.minX, y: rect.minY + 6, width: rect.width, height: 11),
                       size: 7.5, color: .secondaryLabelColor)
         }
+    }
+
+    private func drawResetHeader() {
+        let rect = NSRect(x: 12, y: 103, width: 134, height: 15)
+        let title = L10n.text("重置卡 · 剩余天数")
+        let hint = L10n.text("点击使用重置卡")
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .left
+        paragraph.lineBreakMode = .byTruncatingTail
+        var titleSize: CGFloat = 9
+        var hintSize: CGFloat = 8
+
+        func header() -> NSAttributedString {
+            let titleAttributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: titleSize, weight: .semibold),
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: paragraph,
+            ]
+            let hintAttributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: hintSize, weight: .bold),
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: paragraph,
+            ]
+            let result = NSMutableAttributedString(string: title, attributes: titleAttributes)
+            result.append(NSAttributedString(string: " · ", attributes: titleAttributes))
+            result.append(NSAttributedString(string: hint, attributes: hintAttributes))
+            return result
+        }
+
+        var result = header()
+        while result.boundingRect(
+            with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: rect.height),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]).width > rect.width,
+              hintSize > 6
+        {
+            titleSize -= 0.25
+            hintSize -= 0.25
+            result = header()
+        }
+        result.draw(in: rect)
     }
 }
 

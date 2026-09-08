@@ -24,6 +24,9 @@ enum LocalizationChecks {
                    "Nested errors retranslate")
         let arbitrary: L10n.Message = "模型：\("刷新{0}")"
         try expect(arbitrary.rendered(in: .english) == "Models: 刷新{0}", "User values remain verbatim")
+        let resetHint: L10n.Message = "点击使用重置卡"
+        try expect(resetHint.rendered(in: .chinese) == "点击使用重置卡", "Chinese reset hint")
+        try expect(resetHint.rendered(in: .english) == "Click to use", "English reset hint")
         print("LocalizationChecks passed")
     }
 }
