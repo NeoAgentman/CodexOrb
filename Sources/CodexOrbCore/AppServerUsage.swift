@@ -92,6 +92,27 @@ public struct PendingResetStore: Sendable {
         let url = try directory(identity).appendingPathComponent("pending.json")
         if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
     }
+
+    /// Removes all local operation state for an account after explicit account deletion.
+    public func deleteAccountData(_ identity: String) throws {
+        let dir = try directory(identity)
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: dir.path) {
+            let lock = try CLIUpdateLock(directory: dir)
+            defer { withExtendedLifetime(lock) {} }
+            try fileManager.trashItem(at: dir, resultingItemURL: nil)
+        }
+
+        let quarantine = root.appendingPathComponent("Quarantine", isDirectory: true)
+        guard fileManager.fileExists(atPath: quarantine.path) else { return }
+        let prefix = identity + "-"
+        let related = try fileManager.contentsOfDirectory(at: quarantine, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix(prefix) }
+        for file in related {
+            try fileManager.trashItem(at: file, resultingItemURL: nil)
+        }
+    }
+
     /// Moves an unreadable record out of the active path without destroying it.
     /// The caller must get explicit user confirmation before invoking this method.
     public func quarantineUnreadable(_ identity: String) throws -> URL {
@@ -222,13 +243,16 @@ public actor CodexAccountService {
 }
 
 public struct CodexAppServerUsageSource: CodexUsageSourcing {
-    private let accountHome: String
+    private let accountHome: String?
     private let service: CodexAccountService
     public init(accountHome: String? = nil, service: CodexAccountService = .shared) {
-        self.accountHome = accountHome ?? CodexAccountStore().nativeHome.path; self.service = service
+        self.accountHome = accountHome; self.service = service
     }
     public func fetch() async throws -> CodexUsage {
-        let account = try CodexAccountStore.read(home: URL(fileURLWithPath: accountHome))
+        guard let accountHome else { throw CodexAccountError.noManagedAccount }
+        guard let account = CodexAccountStore().managedAccount(at: URL(fileURLWithPath: accountHome)) else {
+            throw CodexAccountError.notManaged
+        }
         return try await service.fetch(account: account)
     }
 }

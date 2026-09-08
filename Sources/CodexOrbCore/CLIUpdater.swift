@@ -37,7 +37,7 @@ public struct CLIUpdateResult: Sendable {
 public struct CLIUpdater: Sendable {
     public typealias Progress = @Sendable (L10n.Message) async -> Void
     public typealias Prepare = @Sendable (CLITool, String, URL, URL, Progress) async throws -> String?
-    public typealias Validate = @Sendable (CLITool, URL, String, String) async throws -> Void
+    public typealias Validate = @Sendable (CLITool, URL, String, String?) async throws -> Void
 
     public let store: CLIInstallationStore
     private let prepare: Prepare?
@@ -52,7 +52,7 @@ public struct CLIUpdater: Sendable {
         self.validate = validate
     }
 
-    public func update(_ tool: CLITool, accountHome: String = CodexAccountStore().nativeHome.path,
+    public func update(_ tool: CLITool, accountHome: String? = nil,
                        progress: @escaping Progress = { _ in }) async -> CLIUpdateResult
     {
         do {
@@ -142,7 +142,7 @@ public struct CLIUpdater: Sendable {
         return String(parts[1])
     }
 
-    public static func validateCandidate(_ tool: CLITool, directory: URL, version: String, accountHome: String) async throws {
+    public static func validateCandidate(_ tool: CLITool, directory: URL, version: String, accountHome: String?) async throws {
         let binary = directory.appendingPathComponent(tool.rawValue)
         let signature = try await CLIUpdateProcess.run(URL(fileURLWithPath: "/usr/bin/codesign"),
                                                        arguments: ["--verify", "--strict", binary.path])

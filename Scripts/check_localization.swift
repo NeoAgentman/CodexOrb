@@ -16,6 +16,10 @@ struct Preview {
             saved.save(to: defaults)
             precondition(AppSettings.load(from: defaults).language == language)
         }
+        let legacyNative = AppSettings(language: .chinese, accountHome: "/tmp/native-codex-home", refreshInterval: 300)
+        legacyNative.save(to: defaults)
+        precondition(AppSettings.load(from: defaults).accountHome == nil,
+                     "Native or unavailable account must not be selected")
         for language in AppLanguage.allCases {
             UserDefaults.standard.setVolatileDomain([AppLanguage.defaultsKey: language.rawValue], forName: UserDefaults.argumentDomain)
             var settings = AppSettings.load()

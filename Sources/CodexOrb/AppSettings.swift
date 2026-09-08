@@ -23,13 +23,15 @@ struct AppSettings: Equatable {
     }
 
     var language: AppLanguage = .chinese
-    var accountHome: String
+    var accountHome: String?
     var capsuleExpandedByDefault: Bool = false
     var provider: String { "codex" }
     var refreshInterval: TimeInterval
 
     static func load(from defaults: UserDefaults = .standard) -> AppSettings {
-        let accountHome = defaults.string(forKey: DefaultsKey.accountHome) ?? CodexAccountStore().nativeHome.path
+        let store = CodexAccountStore()
+        let accountHome = defaults.string(forKey: DefaultsKey.accountHome)
+            .flatMap { store.managedAccount(at: URL(fileURLWithPath: $0))?.home }
         let storedInterval = defaults.double(forKey: DefaultsKey.refreshInterval)
         let validInterval = Self.refreshChoices.contains(where: { $0.seconds == storedInterval })
             ? storedInterval
@@ -43,7 +45,11 @@ struct AppSettings: Equatable {
 
     func save(to defaults: UserDefaults = .standard) {
         defaults.set(self.language.rawValue, forKey: AppLanguage.defaultsKey)
-        defaults.set(self.accountHome, forKey: DefaultsKey.accountHome)
+        if let accountHome = self.accountHome {
+            defaults.set(accountHome, forKey: DefaultsKey.accountHome)
+        } else {
+            defaults.removeObject(forKey: DefaultsKey.accountHome)
+        }
         defaults.set(self.capsuleExpandedByDefault, forKey: DefaultsKey.capsuleExpandedByDefault)
         defaults.removeObject(forKey: "CodexOrb.quotaProvider")
         defaults.set(self.refreshInterval, forKey: DefaultsKey.refreshInterval)

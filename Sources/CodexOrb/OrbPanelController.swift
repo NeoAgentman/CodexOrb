@@ -2,6 +2,7 @@ import AppKit
 import CodexOrbCore
 
 enum OrbDisplayState: Equatable {
+    case empty
     case loading(previous: CodexUsage?)
     case available(CodexUsage)
     case partial(CodexUsage, message: String)
@@ -9,6 +10,7 @@ enum OrbDisplayState: Equatable {
 
     var usage: CodexUsage? {
         switch self {
+        case .empty: nil
         case let .loading(previous), let .failed(previous, _): previous
         case let .available(usage), let .partial(usage, _): usage
         }

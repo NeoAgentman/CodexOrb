@@ -377,7 +377,11 @@ enum CodexOrbCoreChecks {
     }
 
     private static func checkLiveGUIEnvironment() async throws {
-        let usage = try await CodexAppServerUsageSource().fetch()
+        guard let account = CodexAccountStore().managedAccounts().first else {
+            print("CodexOrb live GUI environment check skipped: no CodexOrb-managed account")
+            return
+        }
+        let usage = try await CodexAppServerUsageSource(accountHome: account.home).fetch()
         try self.expect(usage.fiveHourQuota != nil || usage.weekly != nil, "live Codex windows")
     }
 

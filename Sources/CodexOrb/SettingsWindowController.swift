@@ -10,8 +10,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let providerField = NSPopUpButton()
     private let currentAccountLabel = NSTextField(wrappingLabelWithString: "")
     private let addAccountButton = NSButton(title: L10n.text("添加账号…"), target: nil, action: nil)
+    private let deleteAccountButton = NSButton(title: L10n.text("删除账号…"), target: nil, action: nil)
     private let reloadAccountsButton = NSButton(title: L10n.text("刷新账号"), target: nil, action: nil)
     private var accounts: [CodexAccount] = []
+    private var pendingAccountRemovals: [CodexAccount] = []
     private var isAddingAccount = false
     private let defaultExpandedToggle = NSButton(checkboxWithTitle: L10n.text("默认展开胶囊"), target: nil, action: nil)
     private let languagePopup = NSPopUpButton()
@@ -22,7 +24,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let codexRuntimeLabel = NSTextField(wrappingLabelWithString: "")
     private let openTokenUpdateLabel = NSTextField(wrappingLabelWithString: "")
     private let updateController = CLIUpdateController.shared
-    private let savedAccountHome: String
+    private let savedAccountHome: String?
     private let onApply: (AppSettings) -> Void
 
     init(settings: AppSettings, onApply: @escaping (AppSettings) -> Void) {
@@ -61,16 +63,18 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         self.languagePopup.addItems(withTitles: ["中文", "English"])
         self.languagePopup.selectItem(at: settings.language == .chinese ? 0 : 1)
-        self.reloadAccounts(selectedHome: settings.accountHome)
-        let current = self.accounts.first { $0.home == settings.accountHome }
-        self.currentAccountLabel.stringValue = L10n.text("当前显示：") + (current?.label ?? L10n.text("未登录或账号不可用"))
         self.currentAccountLabel.font = .systemFont(ofSize: 11)
         self.currentAccountLabel.textColor = .secondaryLabelColor
         self.currentAccountLabel.maximumNumberOfLines = 2
+        self.reloadAccounts(selectedHome: settings.accountHome)
         self.addAccountButton.target = self
         self.addAccountButton.action = #selector(self.addAccount(_:))
+        self.deleteAccountButton.target = self
+        self.deleteAccountButton.action = #selector(self.deleteAccount(_:))
         self.reloadAccountsButton.target = self
         self.reloadAccountsButton.action = #selector(self.reloadAccountsClicked(_:))
+        self.providerField.target = self
+        self.providerField.action = #selector(self.accountSelectionChanged(_:))
         self.providerField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         for choice in AppSettings.refreshChoices {
             self.refreshPopup.addItem(withTitle: choice.title)
@@ -149,7 +153,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             self.loginSettingsButton,
         ])
         let accountSection = section([
-            row([text(L10n.text("Codex 账号"), heading: true), spacer(), self.addAccountButton, self.reloadAccountsButton]),
+            row([text(L10n.text("Codex 账号"), heading: true), spacer(), self.addAccountButton, self.deleteAccountButton, self.reloadAccountsButton]),
             self.currentAccountLabel,
             self.providerField,
         ])
@@ -291,39 +295,108 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func save(_ sender: Any?) {
         _ = sender
-        let accountHome = self.providerField.selectedItem?.representedObject as? String ?? self.savedAccountHome
-        if accountHome != self.savedAccountHome,
-           (try? CodexAccountStore.read(home: URL(fileURLWithPath: accountHome))) == nil {
-            self.validationLabel.stringValue = L10n.text("请先添加或登录一个 Codex 账号。")
-            return
+        let accountHome: String?
+        if let selectedHome = self.providerField.selectedItem?.representedObject as? String {
+            guard self.accounts.contains(where: { self.normalizedPath($0.home) == self.normalizedPath(selectedHome) }) else {
+                self.validationLabel.stringValue = L10n.text("请先添加或登录一个 Codex 账号。")
+                return
+            }
+            accountHome = selectedHome
+        } else {
+            accountHome = nil
         }
         guard let interval = self.refreshPopup.selectedItem?.representedObject as? TimeInterval else { return }
         let settings = AppSettings(language: self.languagePopup.indexOfSelectedItem == 1 ? .english : .chinese,
                                    accountHome: accountHome,
                                    capsuleExpandedByDefault: self.defaultExpandedToggle.state == .on,
                                    refreshInterval: interval)
+        do {
+            let store = CodexAccountStore()
+            for account in self.pendingAccountRemovals {
+                try store.delete(account: account)
+            }
+        } catch {
+            self.validationLabel.textColor = .systemRed
+            self.validationLabel.stringValue = L10n.text("删除账号失败，请重试。")
+            return
+        }
         self.onApply(settings)
         self.close()
     }
 
-    private func reloadAccounts(selectedHome: String) {
-        self.accounts = CodexAccountStore().accounts(additionalHomes: CodexAccountStore.configuredHomes() + [selectedHome])
+    private func reloadAccounts(selectedHome: String?) {
+        let removed = Set(self.pendingAccountRemovals.map { self.normalizedPath($0.home) })
+        self.accounts = CodexAccountStore().managedAccounts()
+            .filter { !removed.contains(self.normalizedPath($0.home)) }
         self.providerField.removeAllItems()
         for account in self.accounts {
             let item = NSMenuItem(title: account.label, action: nil, keyEquivalent: "")
             item.representedObject = account.home
             self.providerField.menu?.addItem(item)
         }
-        if let index = self.accounts.firstIndex(where: { $0.home == selectedHome }) {
+        if let selectedHome,
+           let index = self.accounts.firstIndex(where: { self.normalizedPath($0.home) == self.normalizedPath(selectedHome) }) {
             self.providerField.selectItem(at: index)
-        } else {
+        } else if !self.accounts.isEmpty {
             self.providerField.insertItem(withTitle: L10n.text("所选账号不可用，请选择或添加账号"), at: 0)
             self.providerField.selectItem(at: 0)
         }
+        self.updateAccountSelectionUI()
     }
 
     @objc private func reloadAccountsClicked(_ sender: Any?) {
-        self.reloadAccounts(selectedHome: self.providerField.selectedItem?.representedObject as? String ?? self.savedAccountHome)
+        if let selectedHome = self.providerField.selectedItem?.representedObject as? String {
+            self.reloadAccounts(selectedHome: selectedHome)
+        } else {
+            self.reloadAccounts(selectedHome: self.savedAccountHome)
+        }
+    }
+
+    @objc private func accountSelectionChanged(_ sender: Any?) {
+        _ = sender
+        self.updateAccountSelectionUI()
+    }
+
+    @objc private func deleteAccount(_ sender: Any?) {
+        _ = sender
+        guard let account = self.selectedAccount() else {
+            self.validationLabel.textColor = .systemRed
+            self.validationLabel.stringValue = L10n.text("请先选择一个可用账号。")
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = L10n.text("删除这个账号？")
+        alert.informativeText = account.label + "\n" + L10n.text("将清理该账号的 OAuth 凭据、账号文件和本地重置记录。点击“保存”后完成。")
+        alert.addButton(withTitle: L10n.text("取消"))
+        let delete = alert.addButton(withTitle: L10n.text("删除账号"))
+        delete.hasDestructiveAction = true
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
+
+        self.pendingAccountRemovals.removeAll { self.normalizedPath($0.home) == self.normalizedPath(account.home) }
+        self.pendingAccountRemovals.append(account)
+        let fallback = self.accounts.first { self.normalizedPath($0.home) != self.normalizedPath(account.home) }?.home
+        self.reloadAccounts(selectedHome: fallback)
+        self.validationLabel.textColor = .secondaryLabelColor
+        self.validationLabel.stringValue = L10n.text("账号已移除，点击“保存”完成清理。")
+    }
+
+    private func selectedAccount() -> CodexAccount? {
+        guard let home = self.providerField.selectedItem?.representedObject as? String else { return nil }
+        return self.accounts.first { self.normalizedPath($0.home) == self.normalizedPath(home) }
+    }
+
+    private func updateAccountSelectionUI() {
+        let account = self.selectedAccount()
+        let fallback = self.accounts.isEmpty
+            ? L10n.text("暂无 CodexOrb 管理的账号")
+            : L10n.text("未登录或账号不可用")
+        self.currentAccountLabel.stringValue = L10n.text("当前显示：") + (account?.label ?? fallback)
+        self.deleteAccountButton.isEnabled = account != nil && !self.isAddingAccount
+    }
+
+    private func normalizedPath(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
     }
 
     @objc private func addAccount(_ sender: Any?) {
@@ -334,6 +407,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
         self.isAddingAccount = true
         self.addAccountButton.isEnabled = false
+        self.updateAccountSelectionUI()
         self.validationLabel.textColor = .secondaryLabelColor
         self.validationLabel.stringValue = L10n.text("请在浏览器中登录要添加的账号…")
         Task { @MainActor in
@@ -341,6 +415,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             defer {
                 self.isAddingAccount = false
                 self.addAccountButton.isEnabled = true
+                self.updateAccountSelectionUI()
             }
             do {
                 let home = try CodexAccountStore().createLoginHome()
@@ -353,6 +428,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 guard result.status == 0 else { throw CodexAccountError.loginFailed }
                 _ = try CodexAccountStore.read(home: home)
                 self.reloadAccounts(selectedHome: home.path)
+                self.validationLabel.textColor = .secondaryLabelColor
                 self.validationLabel.stringValue = L10n.text("账号已添加，点击“保存” 在胶囊中显示。")
             } catch {
                 if let loginHome { try? FileManager.default.trashItem(at: loginHome, resultingItemURL: nil) }

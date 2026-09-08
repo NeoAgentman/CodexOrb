@@ -37,6 +37,21 @@ public struct CodexAccountStore: Sendable {
         }
     }
 
+    /// Returns only accounts created inside CodexOrb's private account root.
+    /// Native and externally configured Codex homes are intentionally excluded.
+    public func managedAccounts() -> [CodexAccount] {
+        let homes = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
+        return homes.sorted { $0.path < $1.path }.compactMap { self.managedAccount(at: $0) }
+    }
+
+    /// Reads an account only when its resolved home is a direct child of
+    /// CodexOrb's private account root.
+    public func managedAccount(at home: URL) -> CodexAccount? {
+        let resolved = URL(fileURLWithPath: home.path).standardizedFileURL.resolvingSymlinksInPath()
+        guard self.isManagedHome(resolved) else { return nil }
+        return try? Self.read(home: resolved)
+    }
+
     public static func read(home: URL) throws -> CodexAccount {
         let data = try Data(contentsOf: home.appendingPathComponent("auth.json"))
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -72,6 +87,37 @@ public struct CodexAccountStore: Sendable {
         return home
     }
 
+    /// Removes the credentials and local account data represented by an account.
+    ///
+    /// Only homes created by CodexOrb are eligible. Their whole private account
+    /// directory is removed; native and externally configured homes are rejected.
+    public func delete(
+        account: CodexAccount,
+        pendingResetStore: PendingResetStore = PendingResetStore()) throws
+    {
+        let home = URL(fileURLWithPath: account.home).standardizedFileURL
+        guard self.isManagedHome(home) else {
+            throw CodexAccountError.notManaged
+        }
+        let current = try Self.read(home: home)
+        guard current.identityKey == account.identityKey else {
+            throw CodexAccountError.accountChanged
+        }
+
+        // Do this first so a busy or locked reset operation prevents credential
+        // deletion and can still be recovered by the caller.
+        try pendingResetStore.deleteAccountData(account.identityKey)
+
+        try FileManager.default.trashItem(at: home, resultingItemURL: nil)
+    }
+
+    private func isManagedHome(_ home: URL) -> Bool {
+        let normalizedHome = home.resolvingSymlinksInPath().path
+        let normalizedRoot = self.root.standardizedFileURL.resolvingSymlinksInPath().path
+        return home.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().path == normalizedRoot
+            && normalizedHome != normalizedRoot
+    }
+
     public static func configuredHomes() -> [String] {
         let fm = FileManager.default
         let userHome = fm.homeDirectoryForCurrentUser
@@ -92,10 +138,13 @@ public struct CodexAccountStore: Sendable {
 }
 
 public enum CodexAccountError: LocalizedError {
-    case invalidAccount, missingCLI, loginFailed
+    case invalidAccount, accountChanged, noManagedAccount, notManaged, missingCLI, loginFailed
     public var errorDescription: String? {
         switch self {
         case .invalidAccount: L10n.text("账号登录已失效或尚未完成，请重新登录。")
+        case .accountChanged: L10n.text("账号身份已变化，请重新选择账号。")
+        case .noManagedAccount: L10n.text("暂无 CodexOrb 管理的账号。")
+        case .notManaged: L10n.text("只能删除 CodexOrb 管理的账号。")
         case .missingCLI: L10n.text("未找到 Codex CLI，请先安装 Codex。")
         case .loginFailed: L10n.text("登录未完成，请重试并在浏览器中完成授权。")
         }

@@ -1,8 +1,8 @@
 # CodexOrb
 
 A small native macOS floating window that displays Codex quota remaining and today's local AI token usage. It is
-built with the macOS SDK. Codex quota and reset cards use a locally installed `codex app-server`;
-OpenToken is bundled for machine-wide local token statistics.
+built with the macOS SDK. Codex quota and reset cards use a locally installed `codex app-server` and only a
+CodexOrb-managed account. OpenToken is bundled for machine-wide local token statistics.
 
 ## Requirements
 
@@ -14,9 +14,11 @@ OpenToken is bundled for machine-wide local token statistics.
 
 CodexOrb searches PATH, `~/.local/bin`, Homebrew locations, and Codex/ChatGPT application resources.
 It probes the actual app-server schema and skips incompatible candidates. It never updates the external
-Codex installation. Each quota or reset operation starts a private stdio process with the selected account's `CODEX_HOME`
+Codex installation. Each quota or reset operation starts a private stdio process with the selected managed account's `CODEX_HOME`
 and `cli_auth_credentials_store="file"`, then closes and reaps that process. No model turn is created.
 Account identity is checked before and after quota reads; optional backend account IDs are also checked.
+The native `~/.codex` home is never used by the capsule or its detail popovers. With no managed account selected,
+the capsule and popovers remain empty instead of falling back to the native login.
 
 ```sh
 codex app-server --stdio -c 'cli_auth_credentials_store="file"'
@@ -26,7 +28,7 @@ opentoken preview --since <today> --json
 ## Source checkout
 
 The repository includes pinned OpenToken 0.3.27 and SHA256SUMS. CodexBar and its companion resources
-are no longer bundled. Existing CodexBar profile-home configuration is still read for account discovery.
+are no longer bundled. External Codex profile-home configuration is not used for CodexOrb account management.
 `Scripts/import_cli_tools.sh /path/to/opentoken` is an optional maintainer tool. It verifies the pinned
 version/signature and regenerates checksums, without copying credentials or configuration.
 
@@ -91,16 +93,17 @@ The app icon source is `Resources/AppIcon.png`. The build script generates the c
 Right-click the capsule and choose **Settings…** to change:
 
 - 语言: switches the interface between 中文 and English.
-- 胶囊显示账号: shows the current Codex account and lets you select another account, then Save. Only Codex quota is supported.
+- 胶囊显示账号: shows only CodexOrb-managed accounts and lets you select another account, then Save. Only Codex quota is supported.
 - 添加 Codex 账号: starts browser login through the installed Codex CLI in a private home under `~/Library/Application Support/CodexOrb/Accounts/`. Complete authorization in the browser; the existing system login is preserved. Login times out after three minutes.
-- 刷新账号: discovers the native Codex login, accounts added here, and CodexBar's configured `codexProfileHomePaths`. Account labels show email and plan; internal identity keys are not displayed. Credentials are never copied into app preferences.
+- 刷新账号: discovers only accounts created by CodexOrb under `~/Library/Application Support/CodexOrb/Accounts/`. The native `~/.codex` login and external profiles are not managed or deleted here. Account labels show email and plan; internal identity keys are not displayed. Credentials are never copied into app preferences.
 - Automatic refresh: 1, 5, 10, 15, or 30 minutes, or 1 hour. The default is 5 minutes.
 - 默认展开胶囊: keep the capsule expanded after launch and when the pointer leaves it. When disabled, the capsule retains its existing hover-to-expand behavior.
 - 开机启动: controls the macOS login item immediately, independently of Save/Cancel and account login. Reads the system status each time settings becomes active; pending approval includes a link to system login item settings.
 - 更新 CLI: updates only OpenToken, retaining its previous version on failure. The action runs immediately,
   and closing Settings preserves progress. Codex runtime installation/update is managed externally.
 
-Save persists the selection locally and refreshes the capsule. The OpenToken total remains a machine-wide all-tool total; it is not attributed to the selected account.
+Save persists the selection locally and refreshes the capsule. With no managed account selected, the selection is stored empty.
+The OpenToken total remains a machine-wide all-tool total when a managed account is selected; it is not attributed to the selected account.
 
 CLI updates live under `~/Library/Application Support/CodexOrb/CLI/<tool>/`. Each update uses a new staging
 directory, validates the candidate's signature, version and actual JSON report, then atomically switches

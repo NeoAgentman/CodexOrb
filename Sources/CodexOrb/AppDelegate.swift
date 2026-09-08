@@ -51,12 +51,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panelController.close()
     }
 
+    private var selectedManagedAccount: CodexAccount? {
+        guard let accountHome = self.settings.accountHome else { return nil }
+        return CodexAccountStore().managedAccount(at: URL(fileURLWithPath: accountHome))
+    }
+
+    private func isCurrentAccount(_ account: CodexAccount) -> Bool {
+        self.selectedManagedAccount?.identityKey == account.identityKey
+    }
+
     private func refresh() {
         self.updateResetRecovery()
         guard self.refreshID == nil, self.resetTask == nil else { return }
+        guard let account = self.selectedManagedAccount else {
+            self.lastUsage = nil
+            self.panelController.update(.empty)
+            return
+        }
         let refreshID = UUID()
         self.refreshID = refreshID
         self.panelController.update(.loading(previous: self.lastUsage))
+        // Resolve the selected home through the managed-account root on every refresh.
+        // This prevents a stale setting from ever falling back to the native Codex home.
+        self.usageSource = CombinedUsageSource(accountHome: account.home)
         let usageSource = self.usageSource
         self.refreshTask = Task { [weak self] in
             defer {
@@ -165,7 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateResetRecovery() {
-        guard let account = try? CodexAccountStore.read(home: URL(fileURLWithPath: settings.accountHome)) else {
+        guard let account = self.selectedManagedAccount else {
             panelController.resetRecoveryAvailable = false
             panelController.resetRecoveryDamaged = false
             return
@@ -194,9 +211,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func discardDamagedReset() {
         guard resetTask == nil else { return }
-        let account: CodexAccount
-        do { account = try CodexAccountStore.read(home: URL(fileURLWithPath: settings.accountHome)) }
-        catch { resetMessage(AppServerError.accountChanged.localizedDescription); return }
+        guard let account = self.selectedManagedAccount else {
+            self.updateResetRecovery()
+            return
+        }
         guard PendingResetStore().state(account.identityKey) == .unreadable else {
             updateResetRecovery()
             return
@@ -221,9 +239,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func consumeReset(_ requestedID: String?) {
         guard resetTask == nil else { return }
-        let account: CodexAccount
-        do { account = try CodexAccountStore.read(home: URL(fileURLWithPath: settings.accountHome)) }
-        catch { resetMessage(AppServerError.accountChanged.localizedDescription); return }
+        guard let account = self.selectedManagedAccount else {
+            self.updateResetRecovery()
+            return
+        }
         let oldRefresh = refreshTask
         oldRefresh?.cancel()
         refreshTask = nil
@@ -254,16 +273,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                     target = requestedID
                 }
-                guard self.settings.accountHome == account.home else { throw AppServerError.accountChanged }
+                guard self.isCurrentAccount(account) else { throw AppServerError.accountChanged }
                 try Task.checkCancellation()
                 guard await self.panelController.confirmReset(account: account.label, recovering: pending != nil) else { return }
-                guard self.settings.accountHome == account.home else { throw AppServerError.accountChanged }
+                guard self.isCurrentAccount(account) else { throw AppServerError.accountChanged }
                 // Network and process waits happen only after explicit confirmation.
                 await oldRefresh?.value
                 try Task.checkCancellation()
                 let result = try await CodexAccountService.shared.consume(account: account, creditID: target)
-                if let usage = result.usage, self.settings.accountHome == account.home,
-                   (try? CodexAccountStore.read(home: URL(fileURLWithPath: account.home)).identityKey) == account.identityKey {
+                if let usage = result.usage, self.isCurrentAccount(account),
+                   CodexAccountStore().managedAccount(at: URL(fileURLWithPath: account.home))?.identityKey == account.identityKey {
                     self.apply(.quota(.success(usage)), errors: [], isFinal: true)
                 }
                 let message: String

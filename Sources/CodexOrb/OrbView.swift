@@ -580,6 +580,8 @@ final class OrbView: NSView, NSMenuDelegate {
                 }
             }
             value = parts.isEmpty ? L10n.text("用量暂不可用") : parts.joined(separator: ", ")
+        } else if case .empty = self.displayState {
+            value = L10n.text("暂无 CodexOrb 管理的账号")
         } else if case let .failed(_, message) = self.displayState {
             value = message
         } else {

@@ -16,7 +16,7 @@ final class CLIUpdateController {
         for tool in CLITool.allCases { self.messages[tool] = "当前版本 \(store.activeVersion(for: tool))" }
     }
 
-    func start(accountHome: String) {
+    func start(accountHome: String?) {
         guard !self.isRunning else { return }
         self.isRunning = true
         self.failed = []
