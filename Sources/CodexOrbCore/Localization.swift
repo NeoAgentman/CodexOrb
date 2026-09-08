@@ -57,9 +57,9 @@ public enum L10n {
     public static func text(_ message: Message) -> String { message.rendered() }
     static let english: [String: String] = [
         "额度详情": "Quota details",
-        "5 小时剩余额度": "5-hour quota remaining",
+        "5 小时剩余额度": "5 hour usage limit",
         "5 小时重置剩余时间": "5-hour reset countdown",
-        "周剩余额度": "Weekly quota remaining",
+        "周剩余额度": "weekly usage limit",
         "周重置剩余时间": "Weekly reset countdown",
         "{0}天 {1}小时 {2}分": "{0}d {1}h {2}m",
         "{0}小时 {1}分": "{0}h {1}m",
