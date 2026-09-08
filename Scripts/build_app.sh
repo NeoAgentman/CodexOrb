@@ -27,7 +27,7 @@ fi
 mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
 cp "${BIN_DIR}/CodexOrb" "${APP_DIR}/Contents/MacOS/CodexOrb"
 cp -R "${ROOT_DIR}/Sources/CodexOrbCore/Resources/Tools" "${APP_DIR}/Contents/Helpers"
-chmod 755 "${APP_DIR}/Contents/Helpers/"{codexbar,opentoken,CodexBarClaudeWatchdog}
+chmod 755 "${APP_DIR}/Contents/Helpers/opentoken"
 cp "${ROOT_DIR}/Resources/Info.plist" "${APP_DIR}/Contents/Info.plist"
 
 mkdir -p "${ICONSET_DIR}"
@@ -43,7 +43,7 @@ sips -z 512 512 "${ICON_SOURCE}" --out "${ICONSET_DIR}/icon_512x512.png" >/dev/n
 sips -z 1024 1024 "${ICON_SOURCE}" --out "${ICONSET_DIR}/icon_512x512@2x.png" >/dev/null
 iconutil -c icns "${ICONSET_DIR}" -o "${APP_DIR}/Contents/Resources/AppIcon.icns"
 
-for helper in codexbar opentoken CodexBarClaudeWatchdog; do
+for helper in opentoken; do
   codesign --force --sign - "${APP_DIR}/Contents/Helpers/${helper}"
 done
 codesign --force --deep --sign - "${APP_DIR}"

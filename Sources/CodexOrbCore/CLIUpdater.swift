@@ -34,34 +34,6 @@ public struct CLIUpdateResult: Sendable {
     }
 }
 
-public struct CodexBarRelease: Decodable, Sendable {
-    public struct Asset: Decodable, Sendable {
-        public let name: String
-        public let browser_download_url: URL
-        public let digest: String?
-    }
-    public let tag_name: String
-    public let draft: Bool
-    public let prerelease: Bool
-    public let assets: [Asset]
-
-    public func candidate(architecture: String) throws -> Asset {
-        guard !self.draft, !self.prerelease, CLIVersion(self.tag_name) != nil,
-              ["arm64", "x86_64"].contains(architecture),
-              let asset = self.assets.first(where: {
-                  $0.name == "CodexBarCLI-\(self.tag_name)-macos-\(architecture).tar.gz"
-              }),
-              asset.browser_download_url.scheme == "https",
-              asset.browser_download_url.host == "github.com",
-              asset.browser_download_url.path == "/steipete/CodexBar/releases/download/\(self.tag_name)/\(asset.name)",
-              let digest = asset.digest, digest.hasPrefix("sha256:"),
-              digest.dropFirst(7).count == 64,
-              digest.dropFirst(7).allSatisfy({ $0.isHexDigit })
-        else { throw CLIUpdateError.channelUnavailable }
-        return asset
-    }
-}
-
 public struct CLIUpdater: Sendable {
     public typealias Progress = @Sendable (L10n.Message) async -> Void
     public typealias Prepare = @Sendable (CLITool, String, URL, URL, Progress) async throws -> String?
@@ -129,95 +101,8 @@ public struct CLIUpdater: Sendable {
     public static func prepareCandidate(_ tool: CLITool, current: String, currentDirectory: URL,
                                         work: URL, progress: Progress) async throws -> String?
     {
-        switch tool {
-        case .codexbar:
-            return try await self.prepareCodexBar(current: current, work: work, progress: progress)
-        case .opentoken:
-            return try await self.prepareOpenToken(current: current, currentDirectory: currentDirectory,
-                                                   work: work, progress: progress)
-        }
-    }
-
-    private static func prepareCodexBar(current: String, work: URL, progress: Progress) async throws -> String? {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 120
-        let session = URLSession(configuration: configuration)
-        defer { session.invalidateAndCancel() }
-        var request = URLRequest(url: URL(string: "https://api.github.com/repos/steipete/CodexBar/releases/latest")!)
-        request.setValue("CodexOrb-CLI-Updater", forHTTPHeaderField: "User-Agent")
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await session.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200, data.count <= 2_097_152 else {
-            throw CLIUpdateError.channelUnavailable
-        }
-        let release = try JSONDecoder().decode(CodexBarRelease.self, from: data)
-        #if arch(arm64)
-        let architecture = "arm64"
-        #else
-        let architecture = "x86_64"
-        #endif
-        let asset = try release.candidate(architecture: architecture)
-        guard let latest = CLIVersion(release.tag_name), let installed = CLIVersion(current) else {
-            throw CLIUpdateError.invalidVersion
-        }
-        guard latest > installed else { return nil }
-        let version = String(release.tag_name.dropFirst(release.tag_name.hasPrefix("v") ? 1 : 0))
-        await progress("下载 \(version)…")
-        let (download, downloadResponse) = try await session.download(from: asset.browser_download_url)
-        defer { try? FileManager.default.trashItem(at: download, resultingItemURL: nil) }
-        guard (downloadResponse as? HTTPURLResponse)?.statusCode == 200,
-              downloadResponse.url?.scheme == "https",
-              let size = try FileManager.default.attributesOfItem(atPath: download.path)[.size] as? NSNumber,
-              size.intValue > 0, size.intValue <= 157_286_400 else { throw CLIUpdateError.channelUnavailable }
-        guard try CLIInstallationStore.digest(of: download) == String(asset.digest!.dropFirst(7)).lowercased() else {
-            throw CLIUpdateError.checksum
-        }
-        let archive = work.appendingPathComponent("download.tar.gz")
-        try FileManager.default.moveItem(at: download, to: archive)
-        await progress("解压并检查资源…")
-        let listing = try await CLIUpdateProcess.run(URL(fileURLWithPath: "/usr/bin/tar"), arguments: ["-tzf", archive.path])
-        guard listing.status == 0, let text = String(data: listing.stdout, encoding: .utf8),
-              self.safeArchivePaths(text) else { throw CLIUpdateError.archive }
-        let extracted = work.appendingPathComponent("extracted")
-        try FileManager.default.createDirectory(at: extracted, withIntermediateDirectories: true)
-        let unpack = try await CLIUpdateProcess.run(URL(fileURLWithPath: "/usr/bin/tar"),
-            arguments: ["-xzf", archive.path, "--no-same-owner", "-C", extracted.path], writableDirectory: extracted)
-        guard unpack.status == 0 else { throw CLIUpdateError.archive }
-        let binary = extracted.appendingPathComponent("CodexBarCLI")
-        let resources = extracted.appendingPathComponent("CodexBar_CodexBarCore.bundle")
-        guard FileManager.default.isExecutableFile(atPath: binary.path),
-              FileManager.default.fileExists(atPath: resources.path),
-              try String(contentsOf: extracted.appendingPathComponent("VERSION"), encoding: .utf8)
-                .trimmingCharacters(in: .whitespacesAndNewlines) == version else { throw CLIUpdateError.archive }
-        // Resolve every link before copying: the archive may include an internal codexbar alias.
-        try self.validateExtractedPaths(extracted)
-        let ready = work.appendingPathComponent("ready")
-        try FileManager.default.createDirectory(at: ready, withIntermediateDirectories: true)
-        try FileManager.default.copyItem(at: binary, to: ready.appendingPathComponent("codexbar"))
-        try FileManager.default.copyItem(at: resources, to: ready.appendingPathComponent(resources.lastPathComponent))
-        try FileManager.default.copyItem(at: extracted.appendingPathComponent("VERSION"), to: ready.appendingPathComponent("VERSION"))
-        let watchdog = extracted.appendingPathComponent("CodexBarClaudeWatchdog")
-        if FileManager.default.fileExists(atPath: watchdog.path) {
-            try FileManager.default.copyItem(at: watchdog, to: ready.appendingPathComponent(watchdog.lastPathComponent))
-        }
-        return version
-    }
-
-    public static func safeArchivePaths(_ listing: String) -> Bool {
-        let paths = listing.split(separator: "\n")
-        return !paths.isEmpty && paths.allSatisfy {
-            !$0.hasPrefix("/") && !$0.split(separator: "/").contains("..") && !$0.contains("\\")
-        }
-    }
-
-    private static func validateExtractedPaths(_ directory: URL) throws {
-        let root = directory.resolvingSymlinksInPath().path + "/"
-        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isSymbolicLinkKey])
-        else { throw CLIUpdateError.archive }
-        for case let url as URL in enumerator {
-            guard url.resolvingSymlinksInPath().path.hasPrefix(root) else { throw CLIUpdateError.archive }
-        }
+        try await self.prepareOpenToken(current: current, currentDirectory: currentDirectory,
+                                        work: work, progress: progress)
     }
 
     private static func prepareOpenToken(current: String, currentDirectory: URL, work: URL,
@@ -271,21 +156,10 @@ public struct CLIUpdater: Sendable {
         formatter.timeZone = .current
         formatter.dateFormat = "yyyy-MM-dd"
         let date = formatter.string(from: Date())
-        switch tool {
-        case .codexbar:
-            arguments = ["usage", "--provider", "codex", "--source", "oauth", "--format", "json", "--json-only"]
-        case .opentoken:
-            arguments = ["preview", "--since", date, "--json"]
-        }
-        var environment = ProcessInfo.processInfo.environment
-        if tool == .codexbar { environment["CODEX_HOME"] = accountHome }
-        let output = try await CLIUpdateProcess.run(binary, arguments: arguments, timeout: 30, environment: environment)
+        arguments = ["preview", "--since", date, "--json"]
+        let output = try await CLIUpdateProcess.run(binary, arguments: arguments, timeout: 30)
         guard output.status == 0 else { throw CLIUpdateError.validation }
-        do {
-            switch tool {
-            case .codexbar: _ = try CodexUsageParser.parse(output.stdout)
-            case .opentoken: _ = try OpenTokenUsageParser.parse(output.stdout, date: date)
-            }
-        } catch { throw CLIUpdateError.validation }
+        do { _ = try OpenTokenUsageParser.parse(output.stdout, date: date) }
+        catch { throw CLIUpdateError.validation }
     }
 }

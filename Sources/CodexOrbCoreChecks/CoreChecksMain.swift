@@ -9,6 +9,7 @@ enum CodexOrbCoreChecks {
             print("CodexOrb live GUI environment check passed")
             return
         }
+        try await AppServerChecks.run()
         try LocalizationChecks.run()
         try await AccountChecks.run()
         try await CLIUpdateChecks.run()
@@ -227,6 +228,12 @@ enum CodexOrbCoreChecks {
         try self.expect(usage.cacheReadTokens == 35_902_850, "all-tool cache total")
         try self.expect(usage.combinedTokens == 38_213_416, "all-tool total including cache")
         try self.expect(
+            usage.toolUsages.map(\.tool) == ["workbuddy", "codex", "hermes"],
+            "tools sorted by combined token usage")
+        try self.expect(
+            usage.toolUsages.first(where: { $0.tool == "codex" })?.combinedTokens == 16_471_204,
+            "tool rows aggregated")
+        try self.expect(
             usage.modelUsages.map(\.model) == [
                 "glm-5.3-flash",
                 "gpt-5.6-sol",
@@ -246,6 +253,7 @@ enum CodexOrbCoreChecks {
         try self.expect(usage.totalTokens == 0, "empty daily total")
         try self.expect(usage.cacheReadTokens == 0, "empty cache total")
         try self.expect(usage.combinedTokens == 0, "empty combined total")
+        try self.expect(usage.toolUsages.isEmpty, "empty daily tools")
         try self.expect(usage.modelUsages.isEmpty, "empty daily models")
     }
 
@@ -271,6 +279,7 @@ enum CodexOrbCoreChecks {
             now: { now })
         let usage = try await source.fetch()
         try self.expect(usage.combinedTokens == 1_000, "OpenToken PATH combined total")
+        try self.expect(usage.toolUsages.isEmpty, "missing tool remains compatible")
         try self.expect(usage.modelUsages.isEmpty, "missing model remains compatible")
     }
 
@@ -368,16 +377,8 @@ enum CodexOrbCoreChecks {
     }
 
     private static func checkLiveGUIEnvironment() async throws {
-        let source = CodexBarCLIUsageSource(
-            accountHome: CodexAccountStore().nativeHome.path,
-            environment: ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"],
-            timeout: 20)
-        let usage = try await source.fetch()
-        try self.expect(usage.ringQuota != nil, "live GUI environment quota")
-        _ = try await OpenTokenCLIUsageSource(environment: ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"]).fetch()
-        for tool in CLITool.allCases {
-            print("\(tool.title) tool: \(CLIInstallationStore().activeDirectory(for: tool).path)")
-        }
+        let usage = try await CodexAppServerUsageSource().fetch()
+        try self.expect(usage.fiveHourQuota != nil || usage.weekly != nil, "live Codex windows")
     }
 
     private static func checkIndependentMerge() throws {
@@ -437,7 +438,7 @@ enum CodexOrbCoreChecks {
 
         let environment = ["PATH": directory.path]
         let source = CombinedUsageSource(
-            codexBar: CodexBarCLIUsageSource(bundledExecutableDirectory: nil, environment: environment, timeout: 2),
+            quotaSource: CodexBarCLIUsageSource(bundledExecutableDirectory: nil, environment: environment, timeout: 2),
             openToken: OpenTokenCLIUsageSource(bundledExecutableDirectory: nil, environment: environment, timeout: 2),
             retryPolicy: UsageRetryPolicy(maxRetries: 3, delayNanoseconds: 0))
         let refresh = await source.fetchIndependently()
@@ -479,7 +480,7 @@ enum CodexOrbCoreChecks {
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: codexbar.path)
 
         let source = CombinedUsageSource(
-            codexBar: CodexBarCLIUsageSource(bundledExecutableDirectory: nil, environment: ["PATH": directory.path], timeout: 2),
+            quotaSource: CodexBarCLIUsageSource(bundledExecutableDirectory: nil, environment: ["PATH": directory.path], timeout: 2),
             retryPolicy: UsageRetryPolicy(maxRetries: 3, delayNanoseconds: 0))
         let result = await source.fetchQuota()
         guard case let .success(quota) = result else {

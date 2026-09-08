@@ -33,6 +33,15 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     var onRefresh: (() -> Void)?
     var onSettings: (() -> Void)?
     var onQuit: (() -> Void)?
+    var onConsumeReset: ((String?) -> Void)?
+    var onDiscardDamagedReset: (() -> Void)?
+    var resetBusy = false { didSet { refreshResetContent() } }
+    var resetRecoveryAvailable = false { didSet { refreshResetContent() } }
+    var resetRecoveryDamaged = false { didSet { refreshResetContent() } }
+
+    private func refreshResetContent() {
+        if let popover = resetPopover, detailKind == .resets { configureResetContent(popover) }
+    }
 
     private let panel: OrbPanel
     private let orbView: OrbView
@@ -40,9 +49,10 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private var capsuleScale: CGFloat
     private var resizeStartFrame: CGRect?
     private var resizeEdge: CapsuleGeometry.Edge = []
-    private enum DetailKind { case resets, quota }
+    private enum DetailKind { case resets, quota, tokens }
     private var detailKind: DetailKind = .resets
     private var resetPopover: NSPopover?
+    private var confirmationCompletion: ((Bool) -> Void)?
     private var isHoveringCapsule = false
     private var isCapsuleExpanded = false
     private var isExpandedByDefault = false
@@ -179,6 +189,10 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.showDetails(.quota, from: view)
     }
 
+    func orbViewDidRequestTokenDetails(_ view: OrbView) {
+        self.showDetails(.tokens, from: view)
+    }
+
     func orbViewDidRequestResetCards(_ view: OrbView) {
         self.showDetails(.resets, from: view)
     }
@@ -204,7 +218,12 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         popover.delegate = self
         self.configureDetailContent(popover)
         self.resetPopover = popover
-        let anchorRect = kind == .quota ? view.quotaDetailsRect : view.resetCardsRect
+        let anchorRect: CGRect
+        switch kind {
+        case .quota: anchorRect = view.quotaDetailsRect
+        case .tokens: anchorRect = view.tokenDetailsRect
+        case .resets: anchorRect = view.resetCardsRect
+        }
         let anchor = self.panel.convertToScreen(view.convert(anchorRect, to: nil))
         let visible = self.panel.screen?.visibleFrame ?? self.panel.frame
         let edge = Self.resetPopoverEdge(anchor: anchor, visibleFrame: visible, contentHeight: popover.contentSize.height)
@@ -223,7 +242,12 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     private func configureDetailContent(_ popover: NSPopover) {
+        guard confirmationCompletion == nil else { return }
         guard self.detailKind == .quota else {
+            if self.detailKind == .tokens {
+                self.configureTokenContent(popover)
+                return
+            }
             self.configureResetContent(popover)
             return
         }
@@ -239,8 +263,28 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         popover.contentSize = content.frame.size
     }
 
+    private func configureTokenContent(_ popover: NSPopover) {
+        if let content = popover.contentViewController?.view as? TokenDetailsView {
+            content.update(self.orbView.displayState.usage)
+            popover.contentSize = content.frame.size
+            return
+        }
+        let content = TokenDetailsView(usage: self.orbView.displayState.usage)
+        content.onClose = { [weak popover] in popover?.performClose(nil) }
+        let controller = NSViewController()
+        controller.view = content
+        popover.contentViewController = controller
+        popover.contentSize = content.frame.size
+    }
+
     private func configureResetContent(_ popover: NSPopover) {
-        let cards = ResetCardsView(credits: self.orbView.displayState.usage?.resetCredits)
+        guard confirmationCompletion == nil else { return }
+        let cards = ResetCardsView(credits: self.orbView.displayState.usage?.resetCredits,
+                                  busy: resetBusy, recovery: resetRecoveryAvailable,
+                                  damagedRecovery: resetRecoveryDamaged,
+                                  onRecover: { [weak self] in self?.onConsumeReset?(nil) },
+                                  onDiscardDamaged: { [weak self] in self?.onDiscardDamagedReset?() },
+                                  onConsume: { [weak self] id in self?.onConsumeReset?(id) })
         let scroll = ResetCardsScrollView(frame: NSRect(x: 0, y: 0, width: min(360, cards.frame.width), height: cards.frame.height))
         scroll.onClose = { [weak popover] in popover?.performClose(nil) }
         scroll.borderType = .noBorder
@@ -256,9 +300,54 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
+        guard let closed = notification.object as? NSPopover, closed === self.resetPopover else { return }
         self.resetPopover = nil
+        let completion = confirmationCompletion
+        confirmationCompletion = nil
+        completion?(false)
         let hovering = self.panel.frame.contains(NSEvent.mouseLocation)
         self.orbView(self.orbView, didChangeHover: hovering)
+    }
+
+    func confirmReset(account: String, recovering: Bool) async -> Bool {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else { continuation.resume(returning: false); return }
+                resetPopover?.close()
+                hoverDismissTask?.cancel()
+                let popover = NSPopover()
+                popover.behavior = .transient
+                popover.animates = false
+                popover.delegate = self
+                let content = ResetConfirmation(account: account, recovering: recovering) { [weak self] confirmed in
+                    self?.finishResetConfirmation(confirmed)
+                }
+                let controller = NSViewController()
+                controller.view = content
+                popover.contentViewController = controller
+                popover.contentSize = content.frame.size
+                detailKind = .resets
+                confirmationCompletion = { continuation.resume(returning: $0) }
+                resetPopover = popover
+                let rect = orbView.resetCardsRect
+                let anchor = panel.convertToScreen(orbView.convert(rect, to: nil))
+                let edge = Self.resetPopoverEdge(anchor: anchor, visibleFrame: panel.screen?.visibleFrame ?? panel.frame,
+                                                contentHeight: content.frame.height)
+                popover.show(relativeTo: rect, of: orbView, preferredEdge: edge)
+                content.window?.makeKey()
+                content.window?.makeFirstResponder(content)
+                if !popover.isShown { finishResetConfirmation(false) }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.finishResetConfirmation(false) }
+        }
+    }
+
+    private func finishResetConfirmation(_ confirmed: Bool) {
+        let completion = confirmationCompletion
+        confirmationCompletion = nil
+        resetPopover?.close()
+        completion?(confirmed)
     }
 
     func orbViewDidRequestRefresh(_ view: OrbView) {

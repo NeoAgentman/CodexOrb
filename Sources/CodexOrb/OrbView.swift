@@ -10,6 +10,7 @@ protocol OrbViewDelegate: AnyObject {
     func orbViewDidFinishDragging(_ view: OrbView)
     func orbView(_ view: OrbView, didChangeHover isHovering: Bool)
     func orbViewDidRequestQuotaDetails(_ view: OrbView)
+    func orbViewDidRequestTokenDetails(_ view: OrbView)
     func orbViewDidRequestResetCards(_ view: OrbView)
     func orbViewDidRequestRefresh(_ view: OrbView)
     func orbViewDidRequestSettings(_ view: OrbView)
@@ -34,6 +35,7 @@ final class OrbView: NSView, NSMenuDelegate {
     private var isResizing = false
     private var resizeStartLocation: CGPoint?
     private var pressedQuotaDetails = false
+    private var pressedTokenDetails = false
     private var pressedResetCards = false
     private var lastDragLocation: CGPoint?
     private var totalDragDistance: CGFloat = 0
@@ -149,8 +151,10 @@ final class OrbView: NSView, NSMenuDelegate {
             self.delegate?.orbView(self, didBeginResizing: edge)
             return
         }
-        self.pressedQuotaDetails = self.quotaDetailsRect.contains(self.convert(event.locationInWindow, from: nil))
-        self.pressedResetCards = self.resetCardsRect.contains(self.convert(event.locationInWindow, from: nil))
+        let location = self.convert(event.locationInWindow, from: nil)
+        self.pressedQuotaDetails = self.quotaDetailsRect.contains(location)
+        self.pressedTokenDetails = self.tokenConsumptionContains(location)
+        self.pressedResetCards = self.resetCardsRect.contains(location)
             && self.bounds.width >= Self.minimumExpandedHitWidth
         self.lastDragLocation = self.screenLocation(of: event)
         self.totalDragDistance = 0
@@ -182,16 +186,17 @@ final class OrbView: NSView, NSMenuDelegate {
         let location = self.convert(event.locationInWindow, from: nil)
         defer {
             self.pressedQuotaDetails = false
+            self.pressedTokenDetails = false
             self.pressedResetCards = false
             self.lastDragLocation = nil
             self.totalDragDistance = 0
         }
         if self.totalDragDistance >= 4 {
             self.delegate?.orbViewDidFinishDragging(self)
-        } else if event.clickCount == 2, self.tokenConsumptionContains(location) {
-            self.delegate?.orbViewDidRequestRefresh(self)
         } else if event.clickCount == 1, self.pressedQuotaDetails, self.quotaDetailsRect.contains(location) {
             self.delegate?.orbViewDidRequestQuotaDetails(self)
+        } else if event.clickCount == 1, self.pressedTokenDetails, self.tokenConsumptionContains(location) {
+            self.delegate?.orbViewDidRequestTokenDetails(self)
         } else if self.pressedResetCards, self.resetCardsRect.contains(location) {
             self.delegate?.orbViewDidRequestResetCards(self)
         }
@@ -320,6 +325,13 @@ final class OrbView: NSView, NSMenuDelegate {
         self.ringGauge.insetBy(dx: -4, dy: -4)
     }
 
+    var tokenDetailsRect: CGRect {
+        let tokenRect = self.tokenConsumptionRect
+        // Keep the arrow near the capsule's outer edge so the card body has the
+        // same breathing room as the reset-card popover.
+        return tokenRect.offsetBy(dx: 0, dy: self.resetCardsRect.maxY - tokenRect.maxY)
+    }
+
     var resetCardsRect: CGRect {
         CGRect(x: self.bounds.width - 120, y: 5, width: 44, height: 46)
     }
@@ -347,7 +359,7 @@ final class OrbView: NSView, NSMenuDelegate {
     private func drawResetStack(colors: OrbColors) {
         let credits = self.displayState.usage?.resetCredits
         let count = credits?.availableCount ?? 0
-        let front = CGRect(x: self.resetCardsRect.minX + 3, y: 7, width: 30, height: 38)
+        let front = CGRect(x: self.resetCardsRect.minX + 3, y: 7, width: 34, height: 38)
         let layers = min(2, max(0, count - 1))
         if layers > 0 {
             for layer in stride(from: layers, through: 1, by: -1) {
@@ -372,11 +384,39 @@ final class OrbView: NSView, NSMenuDelegate {
                       color: colors.primaryText, alignment: .center)
         let expiry = count > 0 ? ResetCardsView.expirationText(credits?.nextExpiration, compact: true)
             : (credits == nil ? L10n.text("未知") : L10n.text("暂无"))
+        let expiryColor = credits?.nextExpiration.map { self.resetExpirationColor($0, now: Date(), colors: colors) }
+            ?? colors.secondaryText
+        let expiryRect = CGRect(x: front.minX + 11, y: front.minY + 6, width: front.width - 13, height: 12)
+        self.drawHourglass(
+            in: CGRect(x: front.minX + 2, y: expiryRect.midY - 4 + 0.5, width: 8, height: 8),
+            color: expiryColor)
         self.drawText(expiry,
-                      in: CGRect(x: front.minX, y: front.minY + 6, width: front.width, height: 12),
+                      in: expiryRect,
                       font: .monospacedDigitSystemFont(ofSize: 8, weight: .medium),
-                      color: credits?.nextExpiration.map { self.resetExpirationColor($0, now: Date(), colors: colors) }
-                        ?? colors.secondaryText, alignment: .center)
+                      color: expiryColor, alignment: .center)
+    }
+
+    private func drawHourglass(in rect: CGRect, color: NSColor) {
+        guard let symbol = NSImage(systemSymbolName: "hourglass", accessibilityDescription: nil),
+              let configured = symbol.withSymbolConfiguration(
+                NSImage.SymbolConfiguration(pointSize: rect.height, weight: .medium, scale: .small))
+        else { return }
+        let tinted = NSImage(size: rect.size)
+        tinted.lockFocus()
+        configured.draw(
+            in: NSRect(origin: .zero, size: rect.size),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1)
+        if let context = NSGraphicsContext.current?.cgContext {
+            context.saveGState()
+            context.setBlendMode(.sourceIn)
+            context.setFillColor(color.cgColor)
+            context.fill(CGRect(origin: .zero, size: rect.size))
+            context.restoreGState()
+        }
+        tinted.unlockFocus()
+        tinted.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
     }
 
     private func resetExpirationColor(_ expiration: Date, now: Date, colors: OrbColors) -> NSColor {

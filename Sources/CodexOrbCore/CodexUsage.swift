@@ -25,25 +25,37 @@ public struct CodexQuotaWindow: Equatable, Sendable {
 
 public struct CodexResetCredits: Decodable, Equatable, Sendable {
     public struct Credit: Decodable, Equatable, Sendable {
+        public let id: String?
         public let status: String
+        public let resetType: String?
         public let expiresAt: Date?
 
+        public init(id: String?, status: String, resetType: String?, expiresAt: Date?) {
+            self.id = id; self.status = status; self.resetType = resetType; self.expiresAt = expiresAt
+        }
         private enum CodingKeys: String, CodingKey {
-            case status
+            case id, status, resetType
             case expiresAt = "expires_at"
+        }
+        public func isRedeemable(now: Date = Date()) -> Bool {
+            id?.isEmpty == false && status == "available" && resetType == "codexRateLimits"
+                && (expiresAt.map { $0 > now } ?? true)
         }
     }
 
     public let availableCount: Int
-    public let credits: [Credit]
-
-    public var availableExpirations: [Date] {
-        credits.filter { $0.status == "available" }.compactMap(\.expiresAt).sorted()
+    public let credits: [Credit]?
+    public init(availableCount: Int, credits: [Credit]?) {
+        self.availableCount = max(0, availableCount); self.credits = credits
     }
-
-    public var nextExpiration: Date? {
-        availableCount > 0 ? availableExpirations.first : nil
+    public var availableCards: [Credit] {
+        (credits ?? []).filter { $0.status == "available" }.sorted {
+            if $0.expiresAt != $1.expiresAt { return ($0.expiresAt ?? .distantFuture) < ($1.expiresAt ?? .distantFuture) }
+            return ($0.id ?? "") < ($1.id ?? "")
+        }
     }
+    public var availableExpirations: [Date] { availableCards.compactMap(\.expiresAt) }
+    public var nextExpiration: Date? { availableCount > 0 ? availableExpirations.first : nil }
 }
 
 public struct CodexUsage: Equatable, Sendable {
@@ -82,8 +94,7 @@ public struct CodexUsage: Equatable, Sendable {
         return self.weekly ?? self.session
     }
 
-    /// The core five-hour window, independent of whether CodexBar placed it in
-    /// the primary or secondary slot.
+    /// The core five-hour window, independent of which protocol slot contains it;
     public var fiveHourQuota: CodexQuotaWindow? {
         [self.session, self.weekly]
             .compactMap { $0 }
@@ -108,112 +119,4 @@ public struct CodexUsage: Equatable, Sendable {
         guard elapsedFraction >= 0, elapsedFraction <= 1 else { return nil }
         return weekly.usedPercent - (elapsedFraction * 100)
     }
-}
-
-public enum CodexUsageParserError: LocalizedError, Equatable, Sendable {
-    case invalidPayload
-    case providerMissing(String)
-    case providerError(String)
-    case usageMissing
-
-    public var errorDescription: String? {
-        switch self {
-        case .invalidPayload:
-            "CodexBar CLI returned invalid JSON."
-        case let .providerMissing(provider):
-            "CodexBar CLI output did not contain the \(provider) provider."
-        case let .providerError(message):
-            message
-        case .usageMissing:
-            "Codex usage is currently unavailable."
-        }
-    }
-}
-
-public enum CodexUsageParser {
-    public static func parse(_ data: Data) throws -> CodexUsage {
-        let requestedProvider = "codex"
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom(Self.decodeDate)
-
-        let payloads: [ProviderPayload]
-        if let array = try? decoder.decode([ProviderPayload].self, from: data) {
-            payloads = array
-        } else if let payload = try? decoder.decode(ProviderPayload.self, from: data) {
-            payloads = [payload]
-        } else {
-            throw CodexUsageParserError.invalidPayload
-        }
-
-        guard let payload = payloads.first(where: {
-            $0.provider.caseInsensitiveCompare(requestedProvider) == .orderedSame
-        })
-        else {
-            throw CodexUsageParserError.providerMissing(requestedProvider)
-        }
-        if let error = payload.error {
-            throw CodexUsageParserError.providerError(error.message)
-        }
-        guard let usage = payload.usage else {
-            throw CodexUsageParserError.usageMissing
-        }
-
-        return CodexUsage(
-            provider: payload.provider,
-            session: usage.primary?.quotaWindow,
-            weekly: usage.secondary?.quotaWindow,
-            resetCredits: usage.codexResetCredits,
-            updatedAt: usage.updatedAt)
-    }
-
-    private static func decodeDate(_ decoder: Decoder) throws -> Date {
-        let container = try decoder.singleValueContainer()
-        let raw = try container.decode(String.self)
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: raw) {
-            return date
-        }
-        formatter.formatOptions = [.withInternetDateTime]
-        if let date = formatter.date(from: raw) {
-            return date
-        }
-        throw DecodingError.dataCorruptedError(
-            in: container,
-            debugDescription: "Invalid ISO-8601 date: \(raw)")
-    }
-}
-
-private struct ProviderPayload: Decodable {
-    let provider: String
-    let usage: UsagePayload?
-    let error: ErrorPayload?
-}
-
-private struct UsagePayload: Decodable {
-    let primary: WindowPayload?
-    let secondary: WindowPayload?
-    let codexResetCredits: CodexResetCredits?
-    let updatedAt: Date
-}
-
-private struct WindowPayload: Decodable {
-    let usedPercent: Double
-    let windowMinutes: Int?
-    let resetsAt: Date?
-    let resetDescription: String?
-    let isSyntheticPlaceholder: Bool?
-
-    var quotaWindow: CodexQuotaWindow? {
-        guard self.isSyntheticPlaceholder != true, self.usedPercent.isFinite else { return nil }
-        return CodexQuotaWindow(
-            usedPercent: self.usedPercent,
-            windowMinutes: self.windowMinutes,
-            resetsAt: self.resetsAt,
-            resetDescription: self.resetDescription)
-    }
-}
-
-private struct ErrorPayload: Decodable {
-    let message: String
 }

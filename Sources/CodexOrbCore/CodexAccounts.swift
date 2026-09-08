@@ -6,6 +6,7 @@ public struct CodexAccount: Equatable, Sendable {
     public let email: String
     public let workspace: String
     public let identityKey: String
+    public let accountID: String?
 
     public var label: String {
         "\(email) · \(workspace)"
@@ -46,11 +47,13 @@ public struct CodexAccountStore: Sendable {
               let email = claims["email"] as? String, !email.isEmpty
         else { throw CodexAccountError.invalidAccount }
         let auth = claims["https://api.openai.com/auth"] as? [String: Any] ?? [:]
-        let accountID = tokens["account_id"] as? String ?? auth["chatgpt_account_id"] as? String ?? ""
+        let accountID = [tokens["account_id"] as? String, auth["chatgpt_account_id"] as? String]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
         let plan = auth["chatgpt_plan_type"] as? String ?? "Codex"
-        let key = SHA256.hash(data: Data((email.lowercased() + ":" + accountID).utf8))
+        let key = SHA256.hash(data: Data((email.lowercased() + ":" + (accountID ?? "")).utf8))
             .map { String(format: "%02x", $0) }.joined()
-        return CodexAccount(home: home.path, email: email, workspace: plan, identityKey: key)
+        return CodexAccount(home: home.path, email: email, workspace: plan, identityKey: key, accountID: accountID)
     }
 
     private static func claims(_ jwt: String) -> [String: Any]? {

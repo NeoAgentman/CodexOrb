@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var refreshTask: Task<Void, Never>?
     private var refreshID: UUID?
     private var lastUsage: CodexUsage?
+    private var resetTask: Task<Void, Never>?
 
     override init() {
         let settings = AppSettings.load()
@@ -27,6 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panelController.onSettings = { [weak self] in
             self?.showSettings()
         }
+        self.panelController.onConsumeReset = { [weak self] id in self?.consumeReset(id) }
+        self.panelController.onDiscardDamagedReset = { [weak self] in self?.discardDamagedReset() }
         self.panelController.onQuit = {
             NSApp.terminate(nil)
         }
@@ -43,12 +46,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = notification
         self.refreshTimer?.invalidate()
         self.refreshTask?.cancel()
+        self.resetTask?.cancel()
         self.settingsWindowController?.close()
         self.panelController.close()
     }
 
     private func refresh() {
-        guard self.refreshID == nil else { return }
+        self.updateResetRecovery()
+        guard self.refreshID == nil, self.resetTask == nil else { return }
         let refreshID = UUID()
         self.refreshID = refreshID
         self.panelController.update(.loading(previous: self.lastUsage))
@@ -157,5 +162,127 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.panelController.update(.loading(previous: nil))
         }
         self.refresh()
+    }
+
+    private func updateResetRecovery() {
+        guard let account = try? CodexAccountStore.read(home: URL(fileURLWithPath: settings.accountHome)) else {
+            panelController.resetRecoveryAvailable = false
+            panelController.resetRecoveryDamaged = false
+            return
+        }
+        switch PendingResetStore().state(account.identityKey) {
+        case .none:
+            panelController.resetRecoveryAvailable = false
+            panelController.resetRecoveryDamaged = false
+        case .pending:
+            panelController.resetRecoveryAvailable = true
+            panelController.resetRecoveryDamaged = false
+        case .unreadable:
+            panelController.resetRecoveryAvailable = false
+            panelController.resetRecoveryDamaged = true
+        }
+    }
+
+    private func resetMessage(_ message: String, account: CodexAccount? = nil) {
+        let alert = NSAlert()
+        alert.messageText = L10n.text("重置卡")
+        alert.informativeText = (account.map { $0.label + "\n" } ?? "") + message
+        alert.addButton(withTitle: L10n.text("确定"))
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    private func discardDamagedReset() {
+        guard resetTask == nil else { return }
+        let account: CodexAccount
+        do { account = try CodexAccountStore.read(home: URL(fileURLWithPath: settings.accountHome)) }
+        catch { resetMessage(AppServerError.accountChanged.localizedDescription); return }
+        guard PendingResetStore().state(account.identityKey) == .unreadable else {
+            updateResetRecovery()
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = L10n.text("处理损坏的重置记录？")
+        alert.informativeText = account.label + "\n" + L10n.text("无法安全恢复这条记录。移出后可以继续使用其他重置卡，原文件会保留。仅在确认没有待恢复操作时继续。")
+        alert.addButton(withTitle: L10n.text("取消"))
+        let discard = alert.addButton(withTitle: L10n.text("移出记录并继续"))
+        discard.hasDestructiveAction = true
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
+        do {
+            _ = try PendingResetStore().quarantineUnreadable(account.identityKey)
+            updateResetRecovery()
+            resetMessage(L10n.text("已移出损坏的重置记录。"), account: account)
+        } catch {
+            updateResetRecovery()
+            resetMessage(L10n.text("无法处理损坏的重置记录。"), account: account)
+        }
+    }
+
+    private func consumeReset(_ requestedID: String?) {
+        guard resetTask == nil else { return }
+        let account: CodexAccount
+        do { account = try CodexAccountStore.read(home: URL(fileURLWithPath: settings.accountHome)) }
+        catch { resetMessage(AppServerError.accountChanged.localizedDescription); return }
+        let oldRefresh = refreshTask
+        oldRefresh?.cancel()
+        refreshTask = nil
+        refreshID = nil
+        panelController.resetBusy = true
+        resetTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.resetTask = nil
+                self.panelController.resetBusy = false
+                self.updateResetRecovery()
+                self.refresh()
+            }
+            do {
+                let pending = try PendingResetStore().read(account.identityKey)
+                let target: String
+                if let pending {
+                    guard requestedID == nil else {
+                        self.resetMessage(L10n.text("请先恢复上次重置操作，再使用其他卡片。"), account: account)
+                        return
+                    }
+                    target = pending.creditID
+                } else {
+                    guard let requestedID else { return }
+                    // The visible snapshot is sufficient to ask. The service validates live after confirmation.
+                    guard self.lastUsage?.resetCredits?.availableCards.contains(where: { $0.id == requestedID && $0.isRedeemable() }) == true else {
+                        throw AppServerError.cardUnavailable
+                    }
+                    target = requestedID
+                }
+                guard self.settings.accountHome == account.home else { throw AppServerError.accountChanged }
+                try Task.checkCancellation()
+                guard await self.panelController.confirmReset(account: account.label, recovering: pending != nil) else { return }
+                guard self.settings.accountHome == account.home else { throw AppServerError.accountChanged }
+                // Network and process waits happen only after explicit confirmation.
+                await oldRefresh?.value
+                try Task.checkCancellation()
+                let result = try await CodexAccountService.shared.consume(account: account, creditID: target)
+                if let usage = result.usage, self.settings.accountHome == account.home,
+                   (try? CodexAccountStore.read(home: URL(fileURLWithPath: account.home)).identityKey) == account.identityKey {
+                    self.apply(.quota(.success(usage)), errors: [], isFinal: true)
+                }
+                let message: String
+                switch result.outcome {
+                case .reset: message = L10n.text("已消费 1 张重置卡。")
+                case .alreadyRedeemed: message = L10n.text("上次操作已成功，没有再次消费。")
+                case .nothingToReset: message = L10n.text("当前没有符合条件的额度窗口，未执行重置。")
+                case .noCredit: message = L10n.text("账号没有可用的重置卡。")
+                }
+                self.resetMessage(message + (result.usage == nil ? "\n" + L10n.text("额度刷新失败，请恢复操作以重新查询。") : ""), account: account)
+            } catch is CancellationError {
+                // A sent operation remains durable and can be recovered after restart.
+            } catch {
+                let pending = try? await CodexAccountService.shared.pending(account: account)
+                let message = pending != nil
+                    ? L10n.text("上次重置操作尚待确认，请使用“恢复上次重置操作”，不要重复消费。")
+                    : (error as? AppServerError)?.localizedDescription ?? L10n.text("无法完成重置操作，请检查账号或稍后重试。")
+                self.resetMessage(message, account: account)
+            }
+        }
     }
 }

@@ -19,7 +19,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let validationLabel = NSTextField(labelWithString: "")
     private let updateButton = NSButton(title: L10n.text("检查更新"), target: nil, action: nil)
     private let updateSpinner = NSProgressIndicator()
-    private let codexBarUpdateLabel = NSTextField(wrappingLabelWithString: "")
+    private let codexRuntimeLabel = NSTextField(wrappingLabelWithString: "")
     private let openTokenUpdateLabel = NSTextField(wrappingLabelWithString: "")
     private let updateController = CLIUpdateController.shared
     private let savedAccountHome: String
@@ -88,7 +88,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.updateSpinner.style = .spinning
         self.updateSpinner.controlSize = .small
         self.updateSpinner.isDisplayedWhenStopped = false
-        for label in [self.codexBarUpdateLabel, self.openTokenUpdateLabel] {
+        for label in [self.codexRuntimeLabel, self.openTokenUpdateLabel] {
             label.font = .systemFont(ofSize: 12)
             label.maximumNumberOfLines = 2
         }
@@ -164,7 +164,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ])
         let toolsSection = section([
             row([text(L10n.text("工具更新"), heading: true), spacer(), self.updateSpinner, self.updateButton]),
-            self.codexBarUpdateLabel,
+            self.codexRuntimeLabel,
             self.openTokenUpdateLabel,
         ])
         let sections = NSStackView(views: [startupSection, accountSection, capsuleSection, refreshSection, toolsSection])
@@ -273,7 +273,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.updateButton.title = self.updateController.isRunning ? L10n.text("更新中…") : L10n.text("检查更新")
         if self.updateController.isRunning { self.updateSpinner.startAnimation(nil) }
         else { self.updateSpinner.stopAnimation(nil) }
-        for (tool, label) in [(CLITool.codexbar, self.codexBarUpdateLabel), (.opentoken, self.openTokenUpdateLabel)] {
+        self.codexRuntimeLabel.stringValue = CodexRuntime.candidates().isEmpty
+            ? L10n.text("Codex：未安装，请安装 Codex CLI 或 Codex App")
+            : L10n.text("Codex：使用本机安装，兼容性在连接时检查")
+        self.codexRuntimeLabel.textColor = .secondaryLabelColor
+        for (tool, label) in [(CLITool.opentoken, self.openTokenUpdateLabel)] {
             label.stringValue = L10n.text("\(tool.title)：\(self.updateController.messages[tool] ?? "")")
             label.textColor = self.updateController.failed.contains(tool) ? .systemRed : .secondaryLabelColor
             label.toolTip = label.stringValue
@@ -324,12 +328,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func addAccount(_ sender: Any?) {
         guard !self.isAddingAccount else { return }
-        let candidates = ["/opt/homebrew/bin/codex", "/usr/local/bin/codex",
-                          "/Applications/Codex.app/Contents/Resources/codex",
-                          "/Applications/ChatGPT.app/Contents/Resources/codex"]
-        let pathCandidates = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":")
-            .map { String($0) + "/codex" }
-        guard let executable = (pathCandidates + candidates).first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+        guard let executable = CodexRuntime.candidates().first else {
             self.validationLabel.stringValue = CodexAccountError.missingCLI.localizedDescription
             return
         }
@@ -348,7 +347,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 loginHome = home
                 var environment = ProcessInfo.processInfo.environment
                 environment["CODEX_HOME"] = home.path
-                let result = try await CLIUpdateProcess.run(URL(fileURLWithPath: executable),
+                let result = try await CLIUpdateProcess.run(executable,
                     arguments: ["login", "-c", "cli_auth_credentials_store=\"file\""], timeout: 180,
                     environment: environment)
                 guard result.status == 0 else { throw CodexAccountError.loginFailed }
