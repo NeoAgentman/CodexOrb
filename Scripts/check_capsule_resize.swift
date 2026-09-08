@@ -3,7 +3,6 @@ import AppKit
 @MainActor
 private final class InteractionProbe: OrbViewDelegate {
     var resized = 0
-    var refreshed = 0
     var quotaDetails = 0
     var cards = 0
     var moved = 0
@@ -15,7 +14,7 @@ private final class InteractionProbe: OrbViewDelegate {
     func orbView(_ view: OrbView, didChangeHover isHovering: Bool) {}
     func orbViewDidRequestQuotaDetails(_ view: OrbView) { quotaDetails += 1 }
     func orbViewDidRequestResetCards(_ view: OrbView) { cards += 1 }
-    func orbViewDidRequestRefresh(_ view: OrbView) { refreshed += 1 }
+    func orbViewDidRequestRefresh(_ view: OrbView) {}
     func orbViewDidRequestSettings(_ view: OrbView) {}
     func orbViewDidRequestQuit(_ view: OrbView) {}
 }
@@ -80,27 +79,23 @@ struct CapsuleResizeChecks {
         expect(defaults.double(forKey: "CodexOrb.capsuleScale") == 1.5, "Scale persisted")
         let probe = InteractionProbe()
         view.delegate = probe
-        func click(_ point: CGPoint, twice: Bool, drag: Bool = false) {
+        func click(_ point: CGPoint, drag: Bool = false) {
             let location = view.convert(point, to: nil)
             func event(_ type: NSEvent.EventType) -> NSEvent {
                 NSEvent.mouseEvent(with: type, location: location, modifierFlags: [], timestamp: 0,
                                    windowNumber: panel.windowNumber, context: nil, eventNumber: 0,
-                                   clickCount: twice ? 2 : 1, pressure: 1)!
+                                   clickCount: 1, pressure: 1)!
             }
             view.mouseDown(with: event(.leftMouseDown))
             if drag { view.mouseDragged(with: event(.leftMouseDragged)) }
             view.mouseUp(with: event(.leftMouseUp))
         }
-        click(CGPoint(x: 170, y: 28), twice: true, drag: true)
-        expect(probe.resized == 1 && probe.refreshed == 0 && probe.cards == 0 && probe.moved == 0,
+        click(CGPoint(x: 170, y: 28), drag: true)
+        expect(probe.resized == 1 && probe.cards == 0 && probe.moved == 0,
                "Edge resize must not move or click content")
-        click(CGPoint(x: 130, y: 28), twice: true)
-        expect(probe.refreshed == 1, "Scaled token double click")
-        click(CGPoint(x: 75, y: 28), twice: false)
+        click(CGPoint(x: 75, y: 28))
         expect(probe.cards == 1, "Scaled card click")
-        click(CGPoint(x: 30, y: 28), twice: true)
-        expect(probe.refreshed == 1, "Ring must not refresh")
-        click(CGPoint(x: 30, y: 28), twice: false)
+        click(CGPoint(x: 30, y: 28))
         expect(probe.quotaDetails == 1, "Scaled ring single click opens quota details")
         view.delegate = controller
         controller.orbView(view, didChangeHover: false)

@@ -188,8 +188,6 @@ final class OrbView: NSView, NSMenuDelegate {
         }
         if self.totalDragDistance >= 4 {
             self.delegate?.orbViewDidFinishDragging(self)
-        } else if event.clickCount == 2, self.tokenConsumptionContains(location) {
-            self.delegate?.orbViewDidRequestRefresh(self)
         } else if event.clickCount == 1, self.pressedQuotaDetails, self.quotaDetailsRect.contains(location) {
             self.delegate?.orbViewDidRequestQuotaDetails(self)
         } else if self.pressedResetCards, self.resetCardsRect.contains(location) {
@@ -337,11 +335,6 @@ final class OrbView: NSView, NSMenuDelegate {
             y: capsule.midY - 9,
             width: 72,
             height: 23)
-    }
-
-    private func tokenConsumptionContains(_ point: CGPoint) -> Bool {
-        guard self.bounds.width >= Self.minimumExpandedHitWidth else { return false }
-        return self.tokenConsumptionRect.contains(point)
     }
 
     private func drawResetStack(colors: OrbColors) {
