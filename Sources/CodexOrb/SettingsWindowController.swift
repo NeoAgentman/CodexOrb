@@ -7,7 +7,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let launchAtLoginSwitch = NSSwitch()
     private let launchAtLoginStatus = NSTextField(wrappingLabelWithString: "")
     private let loginSettingsButton = NSButton(title: L10n.text("打开系统登录项设置…"), target: nil, action: nil)
-    private let dailyQuotaToggle = NSButton(checkboxWithTitle: L10n.text("每天 00:00 记录所有 Codex 账号周额度"), target: nil, action: nil)
     private let providerField = NSPopUpButton()
     private let currentAccountLabel = NSTextField(wrappingLabelWithString: "")
     private let addAccountButton = NSButton(title: L10n.text("添加账号…"), target: nil, action: nil)
@@ -24,9 +23,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let openTokenUpdateLabel = NSTextField(wrappingLabelWithString: "")
     private let updateController = CLIUpdateController.shared
     private let savedAccountHome: String
-    private let onApply: (AppSettings) throws -> Void
+    private let onApply: (AppSettings) -> Void
 
-    init(settings: AppSettings, onApply: @escaping (AppSettings) throws -> Void) {
+    init(settings: AppSettings, onApply: @escaping (AppSettings) -> Void) {
         self.onApply = onApply
         self.savedAccountHome = settings.accountHome
         let window = NSWindow(
@@ -80,7 +79,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         if let index = AppSettings.refreshChoices.firstIndex(where: { $0.seconds == settings.refreshInterval }) {
             self.refreshPopup.selectItem(at: index)
         }
-        self.dailyQuotaToggle.state = settings.dailyQuotaEnabled ? .on : .off
         self.defaultExpandedToggle.state = settings.capsuleExpandedByDefault ? .on : .off
         self.validationLabel.font = .systemFont(ofSize: 11)
         self.validationLabel.textColor = .systemRed
@@ -158,7 +156,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let refreshSection = section([
             text(L10n.text("刷新与记录"), heading: true),
             row([NSTextField(labelWithString: L10n.text("自动刷新")), spacer(), self.refreshPopup]),
-            self.dailyQuotaToggle,
         ])
         let capsuleSection = section([
             text(L10n.text("胶囊显示"), heading: true),
@@ -298,19 +295,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
         guard let interval = self.refreshPopup.selectedItem?.representedObject as? TimeInterval else { return }
         let settings = AppSettings(language: self.languagePopup.indexOfSelectedItem == 1 ? .english : .chinese,
-                                   dailyQuotaEnabled: self.dailyQuotaToggle.state == .on,
                                    accountHome: accountHome,
                                    capsuleExpandedByDefault: self.defaultExpandedToggle.state == .on,
                                    refreshInterval: interval)
-        do {
-            try self.onApply(settings)
-            self.close()
-        } catch {
-            self.validationLabel.stringValue = L10n.text("无法更新后台任务，请重试。")
-            self.validationLabel.toolTip = error.localizedDescription
-            let alert = NSAlert(error: error)
-            alert.runModal()
-        }
+        self.onApply(settings)
+        self.close()
     }
 
     private func reloadAccounts(selectedHome: String) {

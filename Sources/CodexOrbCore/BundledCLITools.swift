@@ -1,6 +1,6 @@
 import Foundation
 
-/// Both the GUI and recorder resolve tools relative to their own app, never the working directory.
+/// The GUI resolves tools relative to its own app, never the working directory.
 public enum BundledCLITools {
     public static var directory: URL {
         if let executable = Bundle.main.executableURL,

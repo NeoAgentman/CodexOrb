@@ -26,7 +26,6 @@ fi
 
 mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
 cp "${BIN_DIR}/CodexOrb" "${APP_DIR}/Contents/MacOS/CodexOrb"
-cp "${BIN_DIR}/CodexOrbRecorder" "${APP_DIR}/Contents/MacOS/CodexOrbRecorder"
 cp -R "${ROOT_DIR}/Sources/CodexOrbCore/Resources/Tools" "${APP_DIR}/Contents/Helpers"
 chmod 755 "${APP_DIR}/Contents/Helpers/"{codexbar,opentoken,CodexBarClaudeWatchdog}
 cp "${ROOT_DIR}/Resources/Info.plist" "${APP_DIR}/Contents/Info.plist"

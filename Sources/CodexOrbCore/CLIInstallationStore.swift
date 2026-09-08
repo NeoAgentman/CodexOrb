@@ -15,7 +15,7 @@ public struct CLIInstallation: Codable, Equatable, Sendable {
 }
 
 /// Each tool has an independent atomic pointer to an immutable, validated installation.
-/// Existing generations remain available to in-flight GUI and recorder processes.
+/// Existing generations remain available to in-flight GUI processes.
 public struct CLIInstallationStore: Sendable {
     public let root: URL
     public let bundledDirectory: URL

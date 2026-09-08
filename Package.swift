@@ -12,7 +12,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "CodexOrbCore", resources: [.copy("Resources/Tools")]),
-        .executableTarget(name: "CodexOrbRecorder", dependencies: ["CodexOrbCore"]),
         .executableTarget(
             name: "CodexOrb",
             dependencies: ["CodexOrbCore"]),

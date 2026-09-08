@@ -37,7 +37,7 @@ enum AccountChecks {
         for account in accounts {
             let usage = try await CodexBarCLIUsageSource(accountHome: account.home, bundledExecutableDirectory: root,
                 environment: ["EXPECTED_HOME": account.home, "CODEX_HOME": "/wrong"], timeout: 2).fetch()
-            try expect(usage.accountKey == account.identityKey, "explicit home and stable account journal key")
+            try expect(usage.weekly?.usedPercent == 30, "explicit home and scoped CLI")
         }
         try expect(try Data(contentsOf: store.nativeHome.appendingPathComponent("auth.json")) == nativeAuth,
                    "account selection does not overwrite native login")
@@ -46,34 +46,7 @@ enum AccountChecks {
             throw AccountCheckFailure(message: "missing selected account fell back")
         } catch CodexAccountError.invalidAccount { }
           catch CocoaError.fileReadNoSuchFile { }
-        let journal = DailyQuotaStore(directory: root.appendingPathComponent("journal"))
-        let baseline = Date(timeIntervalSince1970: 1_788_652_800)
-        @Sendable func sample(_ account: CodexAccount, percent: Double, at date: Date) -> CodexUsage {
-            CodexUsage(accountKey: account.identityKey, session: nil,
-                       weekly: CodexQuotaWindow(usedPercent: percent, windowMinutes: 10_080, resetsAt: nil, resetDescription: nil),
-                       updatedAt: date)
-        }
-        let result = await DailyAccountRecorder.record(accounts: accounts + [accounts[0]], store: journal,
-            fetch: { account in sample(account, percent: 20, at: baseline) }, retries: 0)
-        try expect(result.succeeded == 2 && result.failed == 0, "midnight records every unique account")
-        let first = try journal.record(sample(accounts[0], percent: 25, at: baseline.addingTimeInterval(3600)))
-        let second = try journal.record(sample(accounts[1], percent: 28, at: baseline.addingTimeInterval(3600)))
-        try expect(first?.consumedPercent == 5 && second?.consumedPercent == 8, "switching reuses each account's baseline")
-        let failingKey = accounts[0].identityKey
-        let partial = await DailyAccountRecorder.record(accounts: accounts, store: journal, fetch: { account in
-            if account.identityKey == failingKey { throw CodexAccountError.invalidAccount }
-            return sample(account, percent: 30, at: baseline.addingTimeInterval(7200))
-        }, retries: 0)
-        try expect(partial.succeeded == 1 && partial.failed == 1, "failed account cannot prevent another account's record")
-        let oldJournal = DailyQuotaStore(directory: root.appendingPathComponent("legacy-journal"))
-        let window = CodexQuotaWindow(usedPercent: 20, windowMinutes: 10_080, resetsAt: nil, resetDescription: nil)
-        _ = try oldJournal.record(CodexUsage(accountKey: "old-email-plan-key", session: nil, weekly: window, updatedAt: baseline))
-        let migrated = try oldJournal.record(CodexUsage(accountKey: accounts[0].identityKey,
-            legacyAccountKey: "old-email-plan-key", session: nil,
-            weekly: CodexQuotaWindow(usedPercent: 27, windowMinutes: 10_080, resetsAt: nil, resetDescription: nil),
-            updatedAt: baseline.addingTimeInterval(3600)))
-        try expect(migrated?.consumedPercent == 7, "unambiguous legacy baseline survives migration")
-        print("Account checks passed: discovery, workspace isolation, scoped CLI, missing account, all-account midnight recording")
+        print("Account checks passed: discovery, workspace isolation, scoped CLI, missing account")
     }
 
     private static func expect(_ condition: Bool, _ message: String) throws {

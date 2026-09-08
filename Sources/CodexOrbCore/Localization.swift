@@ -68,7 +68,6 @@ public enum L10n {
 
         "{0}：{1}": "{0}: {1}",
         "打开系统登录项设置…": "Open Login Items Settings…",
-        "每天 00:00 记录所有 Codex 账号周额度": "Record all Codex accounts daily at midnight",
         "添加账号…": "Add Account…",
         "刷新账号": "Reload",
         "默认展开胶囊": "Keep capsule expanded",
@@ -108,7 +107,6 @@ public enum L10n {
         "模型：{0}": "Models: {0}",
         "{0} 次可用重置": "{0} resets available",
         "下次重置到期：{0}": "Next reset expires: {0}",
-        "今日消耗周额度 {0}": "Weekly quota used today: {0}",
         "用量暂不可用": "Usage unavailable",
         "加载中": "Loading",
         "AI 额度与词元用量": "AI quota and token usage",

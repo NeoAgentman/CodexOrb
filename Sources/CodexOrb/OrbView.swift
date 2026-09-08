@@ -30,21 +30,6 @@ final class OrbView: NSView, NSMenuDelegate {
         }
     }
 
-    var dailyQuotaEnabled = false {
-        didSet {
-            self.updateAccessibility()
-            self.updateSummaryToolTip()
-            self.needsDisplay = true
-        }
-    }
-    var dailyQuota: DailyQuotaUsage? {
-        didSet {
-            self.updateAccessibility()
-            self.updateSummaryToolTip()
-            self.needsDisplay = true
-        }
-    }
-
     private var hoveredResizeEdge: CapsuleGeometry.Edge = []
     private var isResizing = false
     private var resizeStartLocation: CGPoint?
@@ -264,7 +249,6 @@ final class OrbView: NSView, NSMenuDelegate {
             width: 3.5,
             color: self.meterColor(for: usage?.ringQuota?.remainingPercent))
         self.drawWeeklyTimeRing(context: context, rect: gauge.insetBy(dx: -3.75, dy: -3.75))
-        self.drawDailyQuotaArc(context: context, rect: gauge)
         let fiveHourRemaining = usage?.fiveHourQuota?.remainingPercent
         self.drawText(
             usage?.ringQuota.map { "\(Int($0.remainingPercent.rounded()))%" } ?? "—",
@@ -404,52 +388,6 @@ final class OrbView: NSView, NSMenuDelegate {
         case let .failed(_, message), let .partial(_, message): self.toolTip = message
         default: self.toolTip = nil
         }
-    }
-
-    private var dailyQuotaText: String {
-        guard let daily = self.dailyQuota, Calendar.current.isDateInToday(daily.startedAt) else { return "—" }
-        return "\(String(format: "%.1f", daily.consumedPercent))%"
-    }
-
-    private func drawDailyQuotaArc(context: CGContext, rect: CGRect) {
-        guard self.dailyQuotaEnabled,
-              let quota = self.displayState.usage?.ringQuota,
-              quota.windowMinutes == 10_080,
-              let daily = self.dailyQuota,
-              Calendar.current.isDateInToday(daily.startedAt),
-              daily.consumedPercent.isFinite,
-              daily.consumedPercent > 0 else { return }
-        // Keep today's spent segment on the quota ring, immediately after what remains.
-        // Clamp at one full circle when today's journal spans a quota reset.
-        let remaining = quota.remainingPercent
-        let dayStartRemaining = min(100, remaining + daily.consumedPercent)
-        guard dayStartRemaining > remaining else { return }
-        let angle: (Double) -> CGFloat = { .pi / 2 - 2 * .pi * $0 / 100 }
-        context.saveGState()
-        context.setLineWidth(4)
-        context.setLineCap(.butt)
-        let tint = self.meterColor(for: remaining)
-        let dailyTint = tint.blended(withFraction: 0.15, of: .white) ?? tint
-        let arc = CGMutablePath()
-        arc.addArc(center: CGPoint(x: rect.midX, y: rect.midY), radius: rect.width / 2,
-                   startAngle: angle(remaining), endAngle: angle(dayStartRemaining), clockwise: true)
-        // Restore the track underneath to keep the dash gaps clear.
-        context.saveGState()
-        context.addPath(arc)
-        context.replacePathWithStrokedPath()
-        context.clip()
-        let capsule = self.bounds.insetBy(dx: 3, dy: 3)
-        self.drawGlassBackground(in: capsule, cornerRadius: capsule.height / 2,
-                                 colors: self.colors, context: context)
-        context.restoreGState()
-        context.setStrokeColor(self.colors.track.cgColor)
-        context.addPath(arc)
-        context.strokePath()
-        context.setLineDash(phase: 0, lengths: [2.5, 1.5])
-        context.setStrokeColor(dailyTint.cgColor)
-        context.addPath(arc)
-        context.strokePath()
-        context.restoreGState()
     }
 
     private var weeklyResetDate: Date? {
@@ -601,7 +539,6 @@ final class OrbView: NSView, NSMenuDelegate {
                     parts.append(L10n.text("下次重置到期：\(expiry.formatted(Date.FormatStyle(date: .complete, time: .standard).locale(AppLanguage.load().locale)))"))
                 }
             }
-            if self.dailyQuotaEnabled { parts.append(L10n.text("今日消耗周额度 \(self.dailyQuotaText)")) }
             value = parts.isEmpty ? L10n.text("用量暂不可用") : parts.joined(separator: ", ")
         } else if case let .failed(_, message) = self.displayState {
             value = message

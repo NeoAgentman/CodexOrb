@@ -23,7 +23,6 @@ struct AppSettings: Equatable {
     }
 
     var language: AppLanguage = .chinese
-    var dailyQuotaEnabled: Bool = false
     var accountHome: String
     var capsuleExpandedByDefault: Bool = false
     var provider: String { "codex" }
@@ -37,7 +36,6 @@ struct AppSettings: Equatable {
             : 5 * 60
         return AppSettings(
             language: AppLanguage.load(from: defaults),
-            dailyQuotaEnabled: DailyQuotaLaunchAgent.isEnabled,
             accountHome: accountHome,
             capsuleExpandedByDefault: defaults.bool(forKey: DefaultsKey.capsuleExpandedByDefault),
             refreshInterval: validInterval)

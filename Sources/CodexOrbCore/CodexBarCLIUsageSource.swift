@@ -70,15 +70,8 @@ public struct CodexBarCLIUsageSource: CodexUsageSourcing {
             let current = try CodexAccountStore.read(home: URL(fileURLWithPath: account.home))
             guard current.identityKey == account.identityKey else { throw CodexAccountError.invalidAccount }
         }
-        // The old journal used email + plan. Migrate only when this email has one known workspace.
-        let sameEmailAccounts = account.map { selected in
-            CodexAccountStore().accounts(additionalHomes: CodexAccountStore.configuredHomes() + [selected.home])
-                .filter { $0.email.caseInsensitiveCompare(selected.email) == .orderedSame }
-        } ?? []
-        let canMigrate = Set(sameEmailAccounts.map(\.identityKey)).count == 1
-        return CodexUsage(provider: "codex", accountKey: account?.identityKey ?? usage.accountKey,
-                          legacyAccountKey: canMigrate ? usage.accountKey : nil,
-                          session: usage.session, weekly: usage.weekly, resetCredits: usage.resetCredits,
+        return CodexUsage(provider: "codex", session: usage.session, weekly: usage.weekly,
+                          resetCredits: usage.resetCredits,
                           updatedAt: usage.updatedAt)
     }
 

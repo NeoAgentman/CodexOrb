@@ -14,7 +14,6 @@ enum CodexOrbCoreChecks {
         try await CLIUpdateChecks.run()
         try await self.checkBundledToolIsolation()
         try self.checkSessionAndWeeklyParsing()
-        try self.checkDailyQuotaJournal()
         try self.checkResetCredits()
         try self.checkSingleObjectCompatibility()
         try self.checkSyntheticPlaceholderFiltering()
@@ -33,7 +32,7 @@ enum CodexOrbCoreChecks {
         try self.checkIndependentMerge()
         try await self.checkIndependentSourceFailure()
         try await self.checkRetryPolicy()
-        print("CodexOrbCoreChecks passed: 21 checks")
+        print("CodexOrbCoreChecks passed")
     }
 
     private static func checkBundledToolIsolation() async throws {
@@ -57,52 +56,10 @@ enum CodexOrbCoreChecks {
             _ = try await OpenTokenCLIUsageSource(bundledExecutableDirectory: missing, environment: ["PATH": directory.path]).fetch()
             throw CheckFailure(message: "missing bundled OpenToken fell back to PATH")
         } catch OpenTokenCLIError.executableNotFound { }
-        for name in ["CodexOrb", "CodexOrbRecorder"] {
+        for name in ["CodexOrb"] {
             let executable = URL(fileURLWithPath: "/tmp/Relocated Orb.app/Contents/MacOS/\(name)")
-            try self.expect(BundledCLITools.appHelpersDirectory(for: executable)?.path == "/tmp/Relocated Orb.app/Contents/Helpers", "relocated app and recorder helpers")
+            try self.expect(BundledCLITools.appHelpersDirectory(for: executable)?.path == "/tmp/Relocated Orb.app/Contents/Helpers", "relocated app helpers")
         }
-    }
-
-    private static func checkDailyQuotaJournal() throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("orb-daily-\(UUID().uuidString)")
-        defer { try? FileManager.default.trashItem(at: directory, resultingItemURL: nil) }
-        let store = DailyQuotaStore(directory: directory)
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 8 * 3600)!
-        let midnight = ISO8601DateFormatter().date(from: "2026-09-03T16:00:00Z")!
-        let reset = midnight.addingTimeInterval(4 * 86400)
-        func sample(_ percent: Double, _ offset: TimeInterval, account: String = "A", resetOffset: TimeInterval = 0) -> CodexUsage {
-            CodexUsage(accountKey: account, session: nil,
-                       weekly: CodexQuotaWindow(usedPercent: percent, windowMinutes: 10080,
-                                                resetsAt: reset.addingTimeInterval(resetOffset), resetDescription: nil),
-                       updatedAt: midnight.addingTimeInterval(offset))
-        }
-        let baseline = try store.record(sample(20, 10), calendar: calendar)
-        try self.expect(baseline?.consumedPercent == 0 && baseline?.isPartial == false, "local midnight baseline")
-        let normal = try store.record(sample(24, 3600), calendar: calendar)
-        try self.expect(normal?.consumedPercent == 4, "daily percentage points")
-        let duplicate = try store.record(sample(24, 3600), calendar: calendar)
-        try self.expect(duplicate == normal, "duplicate sample is idempotent")
-        let stale = try store.record(sample(21, 20), calendar: calendar)
-        try self.expect(stale == normal, "out-of-order sample cannot roll back journal")
-        let restarted = try DailyQuotaStore(directory: directory).record(sample(26, 7200), calendar: calendar)
-        try self.expect(restarted?.consumedPercent == 6, "journal survives restart")
-        let afterReset = try store.record(sample(2, 7300, resetOffset: 86400), calendar: calendar)
-        try self.expect(afterReset?.consumedPercent == 8 && afterReset?.isEstimated == true, "reset adds observed post-reset consumption")
-        let anotherAccount = try store.record(sample(80, 7400, account: "B"), calendar: calendar)
-        try self.expect(anotherAccount?.consumedPercent == 0 && anotherAccount?.isPartial == true, "account isolation and late first sample")
-        let tomorrow = try store.record(sample(7, 86410, resetOffset: 86400), calendar: calendar)
-        try self.expect(tomorrow?.consumedPercent == 0 && tomorrow?.isPartial == false, "new day does not count overnight difference")
-        let nextHour = try store.record(sample(10, 90000, resetOffset: 86400), calendar: calendar)
-        try self.expect(nextHour?.consumedPercent == 3, "next day delta")
-        let unknown = CodexUsage(session: nil, weekly: sample(10, 0).weekly, updatedAt: midnight)
-        let unknownResult = try store.record(unknown, calendar: calendar)
-        try self.expect(unknownResult == nil, "missing identity must not mix accounts")
-        try Data("invalid".utf8).write(to: directory.appendingPathComponent("daily-quota.json"))
-        do {
-            _ = try store.record(sample(30, 100000), calendar: calendar)
-            throw CheckFailure(message: "corrupt journal was overwritten")
-        } catch is DecodingError { }
     }
 
     private static func checkResetCredits() throws {

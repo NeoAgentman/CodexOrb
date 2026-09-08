@@ -78,13 +78,6 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.orbView.displayState = state
     }
 
-    func updateDailyQuota(_ daily: DailyQuotaUsage?, enabled: Bool) {
-        for view in [self.orbView] {
-            view.dailyQuotaEnabled = enabled
-            view.dailyQuota = daily
-        }
-    }
-
     func updateDefaultExpansion(_ expanded: Bool, animated: Bool = true) {
         self.isExpandedByDefault = expanded
         self.hoverDismissTask?.cancel()

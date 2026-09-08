@@ -34,7 +34,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panelController.updateDefaultExpansion(
             self.settings.capsuleExpandedByDefault,
             animated: false)
-        self.panelController.updateDailyQuota(nil, enabled: self.settings.dailyQuotaEnabled)
         self.panelController.show()
         self.refresh()
         self.scheduleRefreshTimer()
@@ -90,16 +89,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func apply(_ update: IndependentUsageUpdate, errors: [String], isFinal: Bool) {
-        if case let .quota(.success(quota)) = update, self.settings.dailyQuotaEnabled {
-            do {
-                let daily = try DailyQuotaStore().record(quota)
-                self.panelController.updateDailyQuota(
-                    Calendar.current.isDateInToday(quota.updatedAt) ? daily : nil, enabled: true)
-            } catch {
-                self.panelController.updateDailyQuota(nil, enabled: true)
-                NSLog("Daily quota recording failed: %@", error.localizedDescription)
-            }
-        }
         let usage = update.applying(to: self.lastUsage, fallbackProvider: self.settings.provider)
 
         let errorMessage = errors.joined(separator: "\n")
@@ -137,13 +126,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         let controller = SettingsWindowController(settings: self.settings) { [weak self] settings in
-            try self?.apply(settings)
+            self?.apply(settings)
         }
         self.settingsWindowController = controller
         controller.present()
     }
 
-    private func apply(_ settings: AppSettings) throws {
+    private func apply(_ settings: AppSettings) {
         var previousWithLanguage = self.settings
         previousWithLanguage.language = settings.language
         if previousWithLanguage == settings {
@@ -152,11 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.panelController.reloadLanguage()
             return
         }
-        try DailyQuotaLaunchAgent.setEnabled(settings.dailyQuotaEnabled, accountHome: settings.accountHome)
         let accountChanged = settings.accountHome != self.settings.accountHome
-        if accountChanged || settings.dailyQuotaEnabled != self.settings.dailyQuotaEnabled {
-            self.panelController.updateDailyQuota(nil, enabled: settings.dailyQuotaEnabled)
-        }
         self.settings = settings
         settings.save()
         self.panelController.reloadLanguage()

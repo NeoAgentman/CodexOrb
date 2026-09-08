@@ -1,5 +1,4 @@
 import Foundation
-import CryptoKit
 
 public struct CodexQuotaWindow: Equatable, Sendable {
     public let usedPercent: Double
@@ -49,8 +48,6 @@ public struct CodexResetCredits: Decodable, Equatable, Sendable {
 
 public struct CodexUsage: Equatable, Sendable {
     public let provider: String
-    public let accountKey: String?
-    public let legacyAccountKey: String?
     public let session: CodexQuotaWindow?
     public let weekly: CodexQuotaWindow?
     public let resetCredits: CodexResetCredits?
@@ -59,8 +56,6 @@ public struct CodexUsage: Equatable, Sendable {
 
     public init(
         provider: String = "codex",
-        accountKey: String? = nil,
-        legacyAccountKey: String? = nil,
         session: CodexQuotaWindow?,
         weekly: CodexQuotaWindow?,
         todayTokens: OpenTokenDailyUsage? = nil,
@@ -68,8 +63,6 @@ public struct CodexUsage: Equatable, Sendable {
         updatedAt: Date)
     {
         self.provider = provider
-        self.accountKey = accountKey
-        self.legacyAccountKey = legacyAccountKey
         self.session = session
         self.weekly = weekly
         self.todayTokens = todayTokens
@@ -167,10 +160,6 @@ public enum CodexUsageParser {
 
         return CodexUsage(
             provider: payload.provider,
-            accountKey: usage.accountEmail.map { email in
-                SHA256.hash(data: Data((email.lowercased() + ":" + (usage.loginMethod ?? "")).utf8))
-                    .map { String(format: "%02x", $0) }.joined()
-            },
             session: usage.primary?.quotaWindow,
             weekly: usage.secondary?.quotaWindow,
             resetCredits: usage.codexResetCredits,
@@ -202,8 +191,6 @@ private struct ProviderPayload: Decodable {
 }
 
 private struct UsagePayload: Decodable {
-    let accountEmail: String?
-    let loginMethod: String?
     let primary: WindowPayload?
     let secondary: WindowPayload?
     let codexResetCredits: CodexResetCredits?
