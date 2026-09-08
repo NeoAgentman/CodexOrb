@@ -9,6 +9,7 @@ protocol OrbViewDelegate: AnyObject {
     func orbViewDidFinishResizing(_ view: OrbView)
     func orbViewDidFinishDragging(_ view: OrbView)
     func orbView(_ view: OrbView, didChangeHover isHovering: Bool)
+    func orbViewDidRequestQuotaDetails(_ view: OrbView)
     func orbViewDidRequestResetCards(_ view: OrbView)
     func orbViewDidRequestRefresh(_ view: OrbView)
     func orbViewDidRequestSettings(_ view: OrbView)
@@ -47,6 +48,7 @@ final class OrbView: NSView, NSMenuDelegate {
     private var hoveredResizeEdge: CapsuleGeometry.Edge = []
     private var isResizing = false
     private var resizeStartLocation: CGPoint?
+    private var pressedQuotaDetails = false
     private var pressedResetCards = false
     private var lastDragLocation: CGPoint?
     private var totalDragDistance: CGFloat = 0
@@ -162,6 +164,7 @@ final class OrbView: NSView, NSMenuDelegate {
             self.delegate?.orbView(self, didBeginResizing: edge)
             return
         }
+        self.pressedQuotaDetails = self.quotaDetailsRect.contains(self.convert(event.locationInWindow, from: nil))
         self.pressedResetCards = self.resetCardsRect.contains(self.convert(event.locationInWindow, from: nil))
             && self.bounds.width >= Self.minimumExpandedHitWidth
         self.lastDragLocation = self.screenLocation(of: event)
@@ -193,6 +196,7 @@ final class OrbView: NSView, NSMenuDelegate {
         }
         let location = self.convert(event.locationInWindow, from: nil)
         defer {
+            self.pressedQuotaDetails = false
             self.pressedResetCards = false
             self.lastDragLocation = nil
             self.totalDragDistance = 0
@@ -201,6 +205,8 @@ final class OrbView: NSView, NSMenuDelegate {
             self.delegate?.orbViewDidFinishDragging(self)
         } else if event.clickCount == 2, self.tokenConsumptionContains(location) {
             self.delegate?.orbViewDidRequestRefresh(self)
+        } else if event.clickCount == 1, self.pressedQuotaDetails, self.quotaDetailsRect.contains(location) {
+            self.delegate?.orbViewDidRequestQuotaDetails(self)
         } else if self.pressedResetCards, self.resetCardsRect.contains(location) {
             self.delegate?.orbViewDidRequestResetCards(self)
         }
@@ -324,6 +330,10 @@ final class OrbView: NSView, NSMenuDelegate {
             context.setFillColor(NSColor.systemOrange.cgColor)
             context.fillEllipse(in: marker)
         }
+    }
+
+    var quotaDetailsRect: CGRect {
+        self.ringGauge.insetBy(dx: -4, dy: -4)
     }
 
     var resetCardsRect: CGRect {

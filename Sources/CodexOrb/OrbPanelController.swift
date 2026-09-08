@@ -40,6 +40,8 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private var capsuleScale: CGFloat
     private var resizeStartFrame: CGRect?
     private var resizeEdge: CapsuleGeometry.Edge = []
+    private enum DetailKind { case resets, quota }
+    private var detailKind: DetailKind = .resets
     private var resetPopover: NSPopover?
     private var isHoveringCapsule = false
     private var isCapsuleExpanded = false
@@ -106,7 +108,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     func update(_ state: OrbDisplayState) {
         self.orbView.displayState = state
         if let popover = self.resetPopover, popover.isShown {
-            self.configureResetContent(popover)
+            self.configureDetailContent(popover)
         }
     }
 
@@ -180,14 +182,25 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         }
     }
 
+    func orbViewDidRequestQuotaDetails(_ view: OrbView) {
+        self.showDetails(.quota, from: view)
+    }
+
     func orbViewDidRequestResetCards(_ view: OrbView) {
+        self.showDetails(.resets, from: view)
+    }
+
+    private func showDetails(_ kind: DetailKind, from view: OrbView) {
         guard view === self.orbView else { return }
         if let popover = self.resetPopover, popover.isShown {
-            popover.performClose(nil)
-            return
+            let sameKind = self.detailKind == kind
+            popover.close()
+            if sameKind { return }
         }
+        self.detailKind = kind
         self.hoverDismissTask?.cancel()
         self.resizeTask?.cancel()
+        self.isCapsuleExpanded = true
         var frame = self.panel.frame
         frame.origin.x = frame.maxX - Layout.expandedSize.width * self.capsuleScale
         frame.size.width = Layout.expandedSize.width * self.capsuleScale
@@ -196,12 +209,13 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
-        self.configureResetContent(popover)
+        self.configureDetailContent(popover)
         self.resetPopover = popover
-        let anchor = self.panel.convertToScreen(view.convert(view.resetCardsRect, to: nil))
+        let anchorRect = kind == .quota ? view.quotaDetailsRect : view.resetCardsRect
+        let anchor = self.panel.convertToScreen(view.convert(anchorRect, to: nil))
         let visible = self.panel.screen?.visibleFrame ?? self.panel.frame
         let edge = Self.resetPopoverEdge(anchor: anchor, visibleFrame: visible, contentHeight: popover.contentSize.height)
-        popover.show(relativeTo: view.resetCardsRect, of: view, preferredEdge: edge)
+        popover.show(relativeTo: anchorRect, of: view, preferredEdge: edge)
         popover.contentViewController?.view.window?.makeKey()
         if let content = popover.contentViewController?.view {
             content.window?.makeFirstResponder(content)
@@ -213,6 +227,23 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         let above = max(0, visibleFrame.maxY - anchor.maxY)
         let requiredHeight = contentHeight + 24 // Arrow and window margins.
         return below >= requiredHeight || below >= above ? .minY : .maxY
+    }
+
+    private func configureDetailContent(_ popover: NSPopover) {
+        guard self.detailKind == .quota else {
+            self.configureResetContent(popover)
+            return
+        }
+        if let content = popover.contentViewController?.view as? QuotaDetailsView {
+            content.update(self.orbView.displayState.usage)
+            return
+        }
+        let content = QuotaDetailsView(usage: self.orbView.displayState.usage)
+        content.onClose = { [weak popover] in popover?.performClose(nil) }
+        let controller = NSViewController()
+        controller.view = content
+        popover.contentViewController = controller
+        popover.contentSize = content.frame.size
     }
 
     private func configureResetContent(_ popover: NSPopover) {

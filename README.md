@@ -49,7 +49,7 @@ To check capsule resizing and scaled mouse hit areas without querying an account
 
 ```sh
 swift build
-swiftc -parse-as-library -I .build/debug/Modules Sources/CodexOrb/CapsuleGeometry.swift Sources/CodexOrb/OrbView.swift Sources/CodexOrb/OrbPanelController.swift Sources/CodexOrb/ResetCardsView.swift Scripts/check_capsule_resize.swift .build/debug/CodexOrbCore.build/*.o -o /tmp/codexorb-resize-checks
+swiftc -parse-as-library -I .build/debug/Modules Sources/CodexOrb/CapsuleGeometry.swift Sources/CodexOrb/OrbView.swift Sources/CodexOrb/OrbPanelController.swift Sources/CodexOrb/ResetCardsView.swift Sources/CodexOrb/QuotaDetailsView.swift Scripts/check_capsule_resize.swift .build/debug/CodexOrbCore.build/*.o -o /tmp/codexorb-resize-checks
 /tmp/codexorb-resize-checks
 ```
 
