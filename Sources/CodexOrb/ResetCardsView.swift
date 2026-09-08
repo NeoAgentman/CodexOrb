@@ -100,14 +100,16 @@ final class ResetCardsView: NSView {
         return compact ? L10n.text("\(Int(remaining / 86400))天") : L10n.text("\(Int(remaining / 86400))天到期")
     }
 
-    init(credits: CodexResetCredits?, busy: Bool = false, recovery: Bool = false, onRecover: @escaping () -> Void = {}, onConsume: @escaping (String) -> Void = { _ in }) {
+    init(credits: CodexResetCredits?, busy: Bool = false, recovery: Bool = false,
+         damagedRecovery: Bool = false, onRecover: @escaping () -> Void = {},
+         onDiscardDamaged: @escaping () -> Void = {}, onConsume: @escaping (String) -> Void = { _ in }) {
         self.credits = credits
-        self.busy = busy || recovery
+        self.busy = busy || recovery || damagedRecovery
         self.onConsume = onConsume
         let count = max(0, credits?.availableCount ?? 0)
         super.init(frame: NSRect(x: 0, y: 0,
                                 width: max(228, CGFloat(count) * (Self.ticketWidth + Self.gap) + 16),
-                                height: recovery ? 162 : 126))
+                                height: recovery || damagedRecovery ? 162 : 126))
         self.setAccessibilityElement(true)
         self.setAccessibilityRole(.group)
         self.setAccessibilityLabel(L10n.text("可用重置卡片"))
@@ -119,6 +121,14 @@ final class ResetCardsView: NSView {
             button.target = self
             button.action = #selector(recoverClicked)
             self.recoverAction = onRecover
+            self.addSubview(button)
+        } else if damagedRecovery {
+            let button = NSButton(title: L10n.text("处理损坏的重置记录"), target: nil, action: nil)
+            button.frame = NSRect(x: 12, y: 128, width: 204, height: 26)
+            button.isEnabled = !busy
+            button.target = self
+            button.action = #selector(discardDamagedClicked)
+            self.discardDamagedAction = onDiscardDamaged
             self.addSubview(button)
         }
         let cards = displayedCards
@@ -137,7 +147,9 @@ final class ResetCardsView: NSView {
     }
 
     private var recoverAction: (() -> Void)?
+    private var discardDamagedAction: (() -> Void)?
     @objc private func recoverClicked() { recoverAction?() }
+    @objc private func discardDamagedClicked() { discardDamagedAction?() }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

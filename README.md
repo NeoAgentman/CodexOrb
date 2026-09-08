@@ -140,6 +140,11 @@ a token. Closing the app or losing the response preserves the same UUID. “Reco
 confirmation and reuses that UUID; it does not create a separate redemption. Do not manually delete pending
 records to retry an uncertain operation.
 
+If a pending record is unreadable, CodexOrb shows a separate damaged-record action instead of offering a
+recovery that cannot succeed. Reset cards remain disabled until the user explicitly confirms moving the damaged
+record out of the active path. The original file is preserved under `ResetOperations/Quarantine`; CodexOrb never
+silently deletes it or treats it as a successfully recovered operation.
+
 `reset` and `alreadyRedeemed` are successful outcomes; `noCredit` and `nothingToReset` do not apply a reset.
 Every outcome is followed by a fresh quota read. A known success plus failed refresh remains a known success;
 recovering that known outcome only rereads quota. An uncertain response retains its pending operation and, after

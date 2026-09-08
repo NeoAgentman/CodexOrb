@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.showSettings()
         }
         self.panelController.onConsumeReset = { [weak self] id in self?.consumeReset(id) }
+        self.panelController.onDiscardDamagedReset = { [weak self] in self?.discardDamagedReset() }
         self.panelController.onQuit = {
             NSApp.terminate(nil)
         }
@@ -166,10 +167,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateResetRecovery() {
         guard let account = try? CodexAccountStore.read(home: URL(fileURLWithPath: settings.accountHome)) else {
             panelController.resetRecoveryAvailable = false
+            panelController.resetRecoveryDamaged = false
             return
         }
-        do { panelController.resetRecoveryAvailable = try PendingResetStore().read(account.identityKey) != nil }
-        catch { panelController.resetRecoveryAvailable = true }
+        switch PendingResetStore().state(account.identityKey) {
+        case .none:
+            panelController.resetRecoveryAvailable = false
+            panelController.resetRecoveryDamaged = false
+        case .pending:
+            panelController.resetRecoveryAvailable = true
+            panelController.resetRecoveryDamaged = false
+        case .unreadable:
+            panelController.resetRecoveryAvailable = false
+            panelController.resetRecoveryDamaged = true
+        }
     }
 
     private func resetMessage(_ message: String, account: CodexAccount? = nil) {
@@ -179,6 +190,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: L10n.text("确定"))
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
+    }
+
+    private func discardDamagedReset() {
+        guard resetTask == nil else { return }
+        let account: CodexAccount
+        do { account = try CodexAccountStore.read(home: URL(fileURLWithPath: settings.accountHome)) }
+        catch { resetMessage(AppServerError.accountChanged.localizedDescription); return }
+        guard PendingResetStore().state(account.identityKey) == .unreadable else {
+            updateResetRecovery()
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = L10n.text("处理损坏的重置记录？")
+        alert.informativeText = account.label + "\n" + L10n.text("无法安全恢复这条记录。移出后可以继续使用其他重置卡，原文件会保留。仅在确认没有待恢复操作时继续。")
+        alert.addButton(withTitle: L10n.text("取消"))
+        let discard = alert.addButton(withTitle: L10n.text("移出记录并继续"))
+        discard.hasDestructiveAction = true
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertSecondButtonReturn else { return }
+        do {
+            _ = try PendingResetStore().quarantineUnreadable(account.identityKey)
+            updateResetRecovery()
+            resetMessage(L10n.text("已移出损坏的重置记录。"), account: account)
+        } catch {
+            updateResetRecovery()
+            resetMessage(L10n.text("无法处理损坏的重置记录。"), account: account)
+        }
     }
 
     private func consumeReset(_ requestedID: String?) {

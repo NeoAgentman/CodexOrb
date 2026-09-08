@@ -34,8 +34,10 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     var onSettings: (() -> Void)?
     var onQuit: (() -> Void)?
     var onConsumeReset: ((String?) -> Void)?
+    var onDiscardDamagedReset: (() -> Void)?
     var resetBusy = false { didSet { refreshResetContent() } }
     var resetRecoveryAvailable = false { didSet { refreshResetContent() } }
+    var resetRecoveryDamaged = false { didSet { refreshResetContent() } }
 
     private func refreshResetContent() {
         if let popover = resetPopover, detailKind == .resets { configureResetContent(popover) }
@@ -279,7 +281,9 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         guard confirmationCompletion == nil else { return }
         let cards = ResetCardsView(credits: self.orbView.displayState.usage?.resetCredits,
                                   busy: resetBusy, recovery: resetRecoveryAvailable,
+                                  damagedRecovery: resetRecoveryDamaged,
                                   onRecover: { [weak self] in self?.onConsumeReset?(nil) },
+                                  onDiscardDamaged: { [weak self] in self?.onDiscardDamagedReset?() },
                                   onConsume: { [weak self] id in self?.onConsumeReset?(id) })
         let scroll = ResetCardsScrollView(frame: NSRect(x: 0, y: 0, width: min(360, cards.frame.width), height: cards.frame.height))
         scroll.onClose = { [weak popover] in popover?.performClose(nil) }

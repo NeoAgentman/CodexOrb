@@ -37,6 +37,19 @@ struct ResetCardChecks {
         window.contentView = recovery
         click(recovery, x: 110)
         precondition(selected == ["first"])
+        var damagedRecordActions = 0
+        let damaged = ResetCardsView(
+            credits: cards,
+            damagedRecovery: true,
+            onDiscardDamaged: { damagedRecordActions += 1 },
+            onConsume: { selected.append($0) })
+        window.contentView = damaged
+        click(damaged, x: 110)
+        precondition(selected == ["first"], "Damaged pending state disables card consumption")
+        let damagedButton = damaged.subviews.compactMap { $0 as? NSButton }.first
+        precondition(damagedButton?.title == L10n.text("处理损坏的重置记录"))
+        damagedButton?.performClick(nil)
+        precondition(damagedRecordActions == 1, "Damaged pending state has a separate handling action")
         var sends = 0
         var responses: [Bool] = []
         let confirmation = ResetConfirmation(account: "fixture@example.test", recovering: false) { confirmed in
@@ -57,6 +70,6 @@ struct ResetCardChecks {
         let escape = ResetConfirmation(account: "fixture", recovering: false) { if $0 { sends += 1 } }
         escape.cancelOperation(nil)
         precondition(sends == 1, "Escape cannot consume")
-        print("Reset card UI checks passed: ID binding, disabled cards, drag-out, pending recovery, confirmation and cancel")
+        print("Reset card UI checks passed: ID binding, disabled cards, drag-out, pending recovery, damaged record handling, confirmation and cancel")
     }
 }

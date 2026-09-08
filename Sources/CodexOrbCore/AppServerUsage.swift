@@ -53,6 +53,12 @@ public struct PendingReset: Codable, Equatable, Sendable {
     }
 }
 
+public enum PendingResetState: Equatable, Sendable {
+    case none
+    case pending(PendingReset)
+    case unreadable
+}
+
 /// A single pending operation per account, never a credential store.
 public struct PendingResetStore: Sendable {
     public let root: URL
@@ -68,6 +74,13 @@ public struct PendingResetStore: Sendable {
         guard pending.identityKey == identity, !pending.creditID.isEmpty, UUID(uuidString: pending.idempotencyKey) != nil else { throw AppServerError.protocolError }
         return pending
     }
+    public func state(_ identity: String) -> PendingResetState {
+        do {
+            return try read(identity).map(PendingResetState.pending) ?? .none
+        } catch {
+            return .unreadable
+        }
+    }
     public func save(_ pending: PendingReset) throws {
         let dir = try directory(pending.identityKey)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -78,6 +91,32 @@ public struct PendingResetStore: Sendable {
     public func clear(_ identity: String) throws {
         let url = try directory(identity).appendingPathComponent("pending.json")
         if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+    }
+    /// Moves an unreadable record out of the active path without destroying it.
+    /// The caller must get explicit user confirmation before invoking this method.
+    public func quarantineUnreadable(_ identity: String) throws -> URL {
+        let dir = try directory(identity)
+        let lock = try CLIUpdateLock(directory: dir)
+        defer { withExtendedLifetime(lock) {} }
+        let source = dir.appendingPathComponent("pending.json")
+        guard FileManager.default.fileExists(atPath: source.path) else { throw AppServerError.protocolError }
+        do {
+            _ = try read(identity)
+            throw AppServerError.busy
+        } catch AppServerError.busy {
+            throw AppServerError.busy
+        } catch {
+            let quarantine = root.appendingPathComponent("Quarantine", isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: quarantine,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: quarantine.path)
+            let destination = quarantine.appendingPathComponent("\(identity)-\(UUID().uuidString).json")
+            try FileManager.default.moveItem(at: source, to: destination)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+            return destination
+        }
     }
 }
 

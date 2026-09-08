@@ -24,12 +24,14 @@ enum AppServerChecks {
         try expect(compatible == binary, "skip incompatible runtime and probe actual schema")
         let store = PendingResetStore(root: root.appendingPathComponent("pending"))
         let service = CodexAccountService(pendingStore: store, executable: binary, timeout: 0.5)
-        func account(_ name: String) throws -> CodexAccount {
+        func account(_ name: String, includeAccountID: Bool = true) throws -> CodexAccount {
             let home = root.appendingPathComponent(name)
             try fm.createDirectory(at: home, withIntermediateDirectories: true)
             let claims: [String: Any] = ["email": "test@example.test", "https://api.openai.com/auth": ["chatgpt_plan_type": "pro"]]
             let payload = try JSONSerialization.data(withJSONObject: claims).base64EncodedString()
-            let auth = ["tokens": ["access_token": "fixture", "id_token": "header.\(payload).signature", "account_id": name]]
+            var tokens = ["access_token": "fixture", "id_token": "header.\(payload).signature"]
+            if includeAccountID { tokens["account_id"] = name }
+            let auth = ["tokens": tokens]
             try JSONSerialization.data(withJSONObject: auth).write(to: home.appendingPathComponent("auth.json"))
             return try CodexAccountStore.read(home: home)
         }
@@ -45,6 +47,9 @@ enum AppServerChecks {
         let b = try account("account-B")
         let usage = try await service.fetch(account: a)
         try expect(usage.weekly?.usedPercent == 60 && usage.fiveHourQuota?.usedPercent == 20, "fragmented response and interleaved notification")
+        let missingID = try account("missing-id", includeAccountID: false)
+        let missingIDUsage = try await service.fetch(account: missingID)
+        try expect(missingIDUsage.weekly?.usedPercent == 60, "missing local account ID does not become an empty expected ID")
         try expect(try calls(a).isEmpty, "read-only preflight cannot consume")
         try expect(try store.read(a.identityKey) == nil, "preflight creates no pending mutation")
         let result = try await service.consume(account: a, creditID: "card-1")
@@ -111,6 +116,24 @@ enum AppServerChecks {
         catch AppServerError.timedOut { }
         let latestPID = Int32(try String(contentsOf: URL(fileURLWithPath: waiting.home).appendingPathComponent("pid"), encoding: .utf8))!
         try expect(kill(latestPID, 0) != 0 && errno == ESRCH, "timed out subprocess reaped")
+
+        let damaged = try account("damaged-pending")
+        let damagedDirectory = try store.directory(damaged.identityKey)
+        try fm.createDirectory(at: damagedDirectory, withIntermediateDirectories: true)
+        let damagedURL = damagedDirectory.appendingPathComponent("pending.json")
+        try Data("{".utf8).write(to: damagedURL)
+        try expect(store.state(damaged.identityKey) == .unreadable, "damaged pending record is distinct from recoverable pending")
+        let quarantined = try store.quarantineUnreadable(damaged.identityKey)
+        try expect(store.state(damaged.identityKey) == .none && fm.fileExists(atPath: quarantined.path),
+                   "damaged pending record is preserved outside the active recovery path")
+        let validPending = PendingReset(identityKey: damaged.identityKey, creditID: "card-1")
+        try store.save(validPending)
+        do {
+            _ = try store.quarantineUnreadable(damaged.identityKey)
+            throw AppServerError.protocolError
+        } catch AppServerError.busy { }
+        try expect(store.state(damaged.identityKey) == .pending(validPending),
+                   "valid pending record cannot be quarantined")
         print("App-server checks passed: parsing, preflight, account isolation, idempotent recovery, known outcomes, locks, cancellation and timeout")
     }
 
