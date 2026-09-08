@@ -8,13 +8,13 @@ OpenToken is bundled for machine-wide local token statistics.
 
 - macOS 14 or newer
 - Swift 6.2 Command Line Tools (building only)
-- Codex CLI or Codex/ChatGPT App with a compatible Codex runtime (verified schema: 0.153.4)
+- Codex CLI or Codex/ChatGPT App with a compatible Codex runtime (schema-probed at runtime)
 - File-based Codex OAuth login state and network access for quota queries
 - Local AI tool usage logs for token statistics
 
 CodexOrb searches PATH, `~/.local/bin`, Homebrew locations, and Codex/ChatGPT application resources.
 It probes the actual app-server schema and skips incompatible candidates. It never updates the external
-Codex installation. Each operation starts a private stdio process with the selected account's `CODEX_HOME`
+Codex installation. Each quota or reset operation starts a private stdio process with the selected account's `CODEX_HOME`
 and `cli_auth_credentials_store="file"`, then closes and reaps that process. No model turn is created.
 Account identity is checked before and after quota reads; optional backend account IDs are also checked.
 
@@ -78,9 +78,11 @@ The app icon source is `Resources/AppIcon.png`. The build script generates the c
 ## Controls
 
 - Hover inside the orb to expand the capsule; move away to collapse it. A 6-point band along the visible rounded edge is reserved for resizing and highlights on hover.
+- Click the quota ring to open 5-hour and weekly remaining-quota and reset-time details.
 - Click the reset-card stack to open the available reset cards.
 - Drag inside to move, or drag an edge to resize proportionally from 100% to 150%. The expanded maximum is 264 × 84 points; the collapsed maximum is 90 × 84 points. Position and size are restored on the next launch.
-- Click the token total to open tool/model details; right-click to refresh, open Settings, or quit.
+- Click the token total to open token details with the all-tool total, cached-read amount and cache hit rate,
+  plus per-tool and per-model breakdowns; right-click to refresh, open Settings, or quit.
 - Collapsed orb: weekly remaining quota and 5-hour remaining quota. The pace indicator remains on the quota ring and is hidden when weekly quota is exhausted.
 - Expanded capsule: adds reset credits, today's all-tool token total including cached reads, and the top model. Click the token total for per-tool and per-model breakdowns.
 
@@ -88,6 +90,7 @@ The app icon source is `Resources/AppIcon.png`. The build script generates the c
 
 Right-click the capsule and choose **Settings…** to change:
 
+- 语言: switches the interface between 中文 and English.
 - 胶囊显示账号: shows the current Codex account and lets you select another account, then Save. Only Codex quota is supported.
 - 添加 Codex 账号: starts browser login through the installed Codex CLI in a private home under `~/Library/Application Support/CodexOrb/Accounts/`. Complete authorization in the browser; the existing system login is preserved. Login times out after three minutes.
 - 刷新账号: discovers the native Codex login, accounts added here, and CodexBar's configured `codexProfileHomePaths`. Account labels show email and plan; internal identity keys are not displayed. Credentials are never copied into app preferences.
@@ -101,9 +104,9 @@ Save persists the selection locally and refreshes the capsule. The OpenToken tot
 
 CLI updates live under `~/Library/Application Support/CodexOrb/CLI/<tool>/`. Each update uses a new staging
 directory, validates the candidate's signature, version and actual JSON report, then atomically switches
-that tool's `current.json` to a new immutable release directory. The app picks up the new version on its next
-invocation. Existing release directories remain available to running processes;
-temporary update files are moved to Trash. Separate file locks prevent concurrent updates of the same tool.
+that tool's `current.json` to a new immutable release directory. The next OpenToken refresh uses the new version.
+Existing release directories remain available to already-running processes; temporary staging directories are moved
+to Trash. Separate file locks prevent concurrent updates of the same tool.
 The application bundle, global CLI installations and background service definitions are not modified.
 
 OpenToken's `self-update` runs on a staged executable with writes restricted to staging and temporary
@@ -139,8 +142,9 @@ records to retry an uncertain operation.
 
 `reset` and `alreadyRedeemed` are successful outcomes; `noCredit` and `nothingToReset` do not apply a reset.
 Every outcome is followed by a fresh quota read. A known success plus failed refresh remains a known success;
-recovery only rereads quota. An uncertain response retains its pending operation. Other card consumption
-stays disabled until recovery completes. Cancellation cannot undo a request already sent.
+recovering that known outcome only rereads quota. An uncertain response retains its pending operation and, after
+confirmation, retries with the same UUID rather than creating another redemption. Other card consumption stays
+disabled until recovery completes. Cancellation cannot undo a request already sent.
 
 Offline interaction checks (no real redemption):
 
