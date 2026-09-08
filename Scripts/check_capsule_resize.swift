@@ -4,6 +4,7 @@ import AppKit
 private final class InteractionProbe: OrbViewDelegate {
     var resized = 0
     var quotaDetails = 0
+    var tokenDetails = 0
     var cards = 0
     var moved = 0
     func orbView(_ view: OrbView, didBeginResizing edge: CapsuleGeometry.Edge) { resized += 1 }
@@ -13,6 +14,7 @@ private final class InteractionProbe: OrbViewDelegate {
     func orbViewDidFinishDragging(_ view: OrbView) {}
     func orbView(_ view: OrbView, didChangeHover isHovering: Bool) {}
     func orbViewDidRequestQuotaDetails(_ view: OrbView) { quotaDetails += 1 }
+    func orbViewDidRequestTokenDetails(_ view: OrbView) { tokenDetails += 1 }
     func orbViewDidRequestResetCards(_ view: OrbView) { cards += 1 }
     func orbViewDidRequestRefresh(_ view: OrbView) {}
     func orbViewDidRequestSettings(_ view: OrbView) {}
@@ -95,6 +97,8 @@ struct CapsuleResizeChecks {
                "Edge resize must not move or click content")
         click(CGPoint(x: 75, y: 28))
         expect(probe.cards == 1, "Scaled card click")
+        click(CGPoint(x: 130, y: 28))
+        expect(probe.tokenDetails == 1, "Scaled token single click opens token details")
         click(CGPoint(x: 30, y: 28))
         expect(probe.quotaDetails == 1, "Scaled ring single click opens quota details")
         view.delegate = controller

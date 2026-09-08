@@ -80,9 +80,9 @@ The app icon source is `Resources/AppIcon.png`. The build script generates the c
 - Hover inside the orb to expand the capsule; move away to collapse it. A 6-point band along the visible rounded edge is reserved for resizing and highlights on hover.
 - Click the reset-card stack to open the available reset cards.
 - Drag inside to move, or drag an edge to resize proportionally from 100% to 150%. The expanded maximum is 264 × 84 points; the collapsed maximum is 90 × 84 points. Position and size are restored on the next launch.
-- Double-click the token total to refresh; right-click to refresh, open Settings, or quit.
+- Click the token total to open tool/model details; right-click to refresh, open Settings, or quit.
 - Collapsed orb: weekly remaining quota and 5-hour remaining quota. The pace indicator remains on the quota ring and is hidden when weekly quota is exhausted.
-- Expanded capsule: adds reset credits, today's all-tool token total including cached reads, and the top model.
+- Expanded capsule: adds reset credits, today's all-tool token total including cached reads, and the top model. Click the token total for per-tool and per-model breakdowns.
 
 ## Settings
 

@@ -47,7 +47,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private var capsuleScale: CGFloat
     private var resizeStartFrame: CGRect?
     private var resizeEdge: CapsuleGeometry.Edge = []
-    private enum DetailKind { case resets, quota }
+    private enum DetailKind { case resets, quota, tokens }
     private var detailKind: DetailKind = .resets
     private var resetPopover: NSPopover?
     private var confirmationCompletion: ((Bool) -> Void)?
@@ -187,6 +187,10 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.showDetails(.quota, from: view)
     }
 
+    func orbViewDidRequestTokenDetails(_ view: OrbView) {
+        self.showDetails(.tokens, from: view)
+    }
+
     func orbViewDidRequestResetCards(_ view: OrbView) {
         self.showDetails(.resets, from: view)
     }
@@ -212,7 +216,12 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         popover.delegate = self
         self.configureDetailContent(popover)
         self.resetPopover = popover
-        let anchorRect = kind == .quota ? view.quotaDetailsRect : view.resetCardsRect
+        let anchorRect: CGRect
+        switch kind {
+        case .quota: anchorRect = view.quotaDetailsRect
+        case .tokens: anchorRect = view.tokenDetailsRect
+        case .resets: anchorRect = view.resetCardsRect
+        }
         let anchor = self.panel.convertToScreen(view.convert(anchorRect, to: nil))
         let visible = self.panel.screen?.visibleFrame ?? self.panel.frame
         let edge = Self.resetPopoverEdge(anchor: anchor, visibleFrame: visible, contentHeight: popover.contentSize.height)
@@ -233,6 +242,10 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private func configureDetailContent(_ popover: NSPopover) {
         guard confirmationCompletion == nil else { return }
         guard self.detailKind == .quota else {
+            if self.detailKind == .tokens {
+                self.configureTokenContent(popover)
+                return
+            }
             self.configureResetContent(popover)
             return
         }
@@ -241,6 +254,20 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
             return
         }
         let content = QuotaDetailsView(usage: self.orbView.displayState.usage)
+        content.onClose = { [weak popover] in popover?.performClose(nil) }
+        let controller = NSViewController()
+        controller.view = content
+        popover.contentViewController = controller
+        popover.contentSize = content.frame.size
+    }
+
+    private func configureTokenContent(_ popover: NSPopover) {
+        if let content = popover.contentViewController?.view as? TokenDetailsView {
+            content.update(self.orbView.displayState.usage)
+            popover.contentSize = content.frame.size
+            return
+        }
+        let content = TokenDetailsView(usage: self.orbView.displayState.usage)
         content.onClose = { [weak popover] in popover?.performClose(nil) }
         let controller = NSViewController()
         controller.view = content

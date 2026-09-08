@@ -10,9 +10,10 @@ bin_dir = Path(subprocess.check_output(['swift', 'build', '--show-bin-path'], te
 objects = [p for p in (bin_dir/'CodexOrb.product/Objects.LinkFileList').read_text().splitlines()
            if '/CodexOrbCore.build/' in p]
 checks = [
-    ('popover', ['CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift'], 'check_reset_popover.swift'),
+    ('popover', ['CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift', 'TokenDetailsView.swift'], 'check_reset_popover.swift'),
+    ('token-details', ['CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift', 'TokenDetailsView.swift'], 'check_token_details_popover.swift'),
     ('reset', ['ResetCardsView.swift', 'ResetConfirmation.swift'], 'check_reset_cards.swift'),
-    ('capsule', ['CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift'], 'check_capsule_resize.swift'),
+    ('capsule', ['CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift', 'TokenDetailsView.swift'], 'check_capsule_resize.swift'),
 ]
 with tempfile.TemporaryDirectory(prefix='codexorb-ui-check-') as directory:
     for name, sources, check in checks:

@@ -10,6 +10,7 @@ protocol OrbViewDelegate: AnyObject {
     func orbViewDidFinishDragging(_ view: OrbView)
     func orbView(_ view: OrbView, didChangeHover isHovering: Bool)
     func orbViewDidRequestQuotaDetails(_ view: OrbView)
+    func orbViewDidRequestTokenDetails(_ view: OrbView)
     func orbViewDidRequestResetCards(_ view: OrbView)
     func orbViewDidRequestRefresh(_ view: OrbView)
     func orbViewDidRequestSettings(_ view: OrbView)
@@ -34,6 +35,7 @@ final class OrbView: NSView, NSMenuDelegate {
     private var isResizing = false
     private var resizeStartLocation: CGPoint?
     private var pressedQuotaDetails = false
+    private var pressedTokenDetails = false
     private var pressedResetCards = false
     private var lastDragLocation: CGPoint?
     private var totalDragDistance: CGFloat = 0
@@ -149,8 +151,10 @@ final class OrbView: NSView, NSMenuDelegate {
             self.delegate?.orbView(self, didBeginResizing: edge)
             return
         }
-        self.pressedQuotaDetails = self.quotaDetailsRect.contains(self.convert(event.locationInWindow, from: nil))
-        self.pressedResetCards = self.resetCardsRect.contains(self.convert(event.locationInWindow, from: nil))
+        let location = self.convert(event.locationInWindow, from: nil)
+        self.pressedQuotaDetails = self.quotaDetailsRect.contains(location)
+        self.pressedTokenDetails = self.tokenConsumptionContains(location)
+        self.pressedResetCards = self.resetCardsRect.contains(location)
             && self.bounds.width >= Self.minimumExpandedHitWidth
         self.lastDragLocation = self.screenLocation(of: event)
         self.totalDragDistance = 0
@@ -182,6 +186,7 @@ final class OrbView: NSView, NSMenuDelegate {
         let location = self.convert(event.locationInWindow, from: nil)
         defer {
             self.pressedQuotaDetails = false
+            self.pressedTokenDetails = false
             self.pressedResetCards = false
             self.lastDragLocation = nil
             self.totalDragDistance = 0
@@ -190,6 +195,8 @@ final class OrbView: NSView, NSMenuDelegate {
             self.delegate?.orbViewDidFinishDragging(self)
         } else if event.clickCount == 1, self.pressedQuotaDetails, self.quotaDetailsRect.contains(location) {
             self.delegate?.orbViewDidRequestQuotaDetails(self)
+        } else if event.clickCount == 1, self.pressedTokenDetails, self.tokenConsumptionContains(location) {
+            self.delegate?.orbViewDidRequestTokenDetails(self)
         } else if self.pressedResetCards, self.resetCardsRect.contains(location) {
             self.delegate?.orbViewDidRequestResetCards(self)
         }
@@ -318,6 +325,13 @@ final class OrbView: NSView, NSMenuDelegate {
         self.ringGauge.insetBy(dx: -4, dy: -4)
     }
 
+    var tokenDetailsRect: CGRect {
+        let tokenRect = self.tokenConsumptionRect
+        // Keep the arrow near the capsule's outer edge so the card body has the
+        // same breathing room as the reset-card popover.
+        return tokenRect.offsetBy(dx: 0, dy: self.resetCardsRect.maxY - tokenRect.maxY)
+    }
+
     var resetCardsRect: CGRect {
         CGRect(x: self.bounds.width - 120, y: 5, width: 44, height: 46)
     }
@@ -335,6 +349,11 @@ final class OrbView: NSView, NSMenuDelegate {
             y: capsule.midY - 9,
             width: 72,
             height: 23)
+    }
+
+    private func tokenConsumptionContains(_ point: CGPoint) -> Bool {
+        guard self.bounds.width >= Self.minimumExpandedHitWidth else { return false }
+        return self.tokenConsumptionRect.contains(point)
     }
 
     private func drawResetStack(colors: OrbColors) {

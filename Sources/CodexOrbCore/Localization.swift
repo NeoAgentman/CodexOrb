@@ -99,6 +99,13 @@ public enum L10n {
         "不足 1 分钟": "Less than 1 minute",
         "等待重置": "Reset due",
 
+        "Token 用量详情": "Token usage details",
+        "词元用量详情": "Token usage details",
+        "今日合计（含缓存读取）": "Today's total (including cache reads)",
+        "按工具": "By tool",
+        "按模型": "By model",
+        "无数据": "No data",
+
         "{0}：{1}": "{0}: {1}",
         "打开系统登录项设置…": "Open Login Items Settings…",
         "添加账号…": "Add Account…",

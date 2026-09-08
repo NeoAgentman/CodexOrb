@@ -228,6 +228,12 @@ enum CodexOrbCoreChecks {
         try self.expect(usage.cacheReadTokens == 35_902_850, "all-tool cache total")
         try self.expect(usage.combinedTokens == 38_213_416, "all-tool total including cache")
         try self.expect(
+            usage.toolUsages.map(\.tool) == ["workbuddy", "codex", "hermes"],
+            "tools sorted by combined token usage")
+        try self.expect(
+            usage.toolUsages.first(where: { $0.tool == "codex" })?.combinedTokens == 16_471_204,
+            "tool rows aggregated")
+        try self.expect(
             usage.modelUsages.map(\.model) == [
                 "glm-5.3-flash",
                 "gpt-5.6-sol",
@@ -247,6 +253,7 @@ enum CodexOrbCoreChecks {
         try self.expect(usage.totalTokens == 0, "empty daily total")
         try self.expect(usage.cacheReadTokens == 0, "empty cache total")
         try self.expect(usage.combinedTokens == 0, "empty combined total")
+        try self.expect(usage.toolUsages.isEmpty, "empty daily tools")
         try self.expect(usage.modelUsages.isEmpty, "empty daily models")
     }
 
@@ -272,6 +279,7 @@ enum CodexOrbCoreChecks {
             now: { now })
         let usage = try await source.fetch()
         try self.expect(usage.combinedTokens == 1_000, "OpenToken PATH combined total")
+        try self.expect(usage.toolUsages.isEmpty, "missing tool remains compatible")
         try self.expect(usage.modelUsages.isEmpty, "missing model remains compatible")
     }
 
