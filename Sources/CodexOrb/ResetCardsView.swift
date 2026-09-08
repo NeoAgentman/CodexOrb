@@ -127,7 +127,7 @@ final class ResetCardsView: NSView {
             let rect = self.ticketRect(index)
             let label = NSTextField(labelWithString: cards[index] != nil && expiration == nil ? L10n.text("长期") : Self.countdown(expiration))
             label.tag = index
-            label.font = .monospacedDigitSystemFont(ofSize: expiration == nil && cards[index] != nil ? 12 : (expiration.map { $0 <= Date() } == true ? 12 : 22), weight: .medium)
+            label.font = .monospacedDigitSystemFont(ofSize: expiration == nil && cards[index] != nil ? 13 : (expiration.map { $0 <= Date() } == true ? 13 : 24), weight: .medium)
             label.alignment = .center
             label.textColor = Self.color(expiration, nearest: index == 0)
             label.frame = NSRect(x: rect.minX + 2, y: rect.minY + 30, width: rect.width - 4, height: 28)
@@ -178,11 +178,11 @@ final class ResetCardsView: NSView {
         self.drawResetHeader()
         self.text(self.credits.map { L10n.text("\($0.availableCount) 次可用") } ?? L10n.text("暂不可用"),
                   rect: NSRect(x: self.bounds.width - 82, y: 103, width: 70, height: 14),
-                  size: 9, color: .secondaryLabelColor, alignment: .right)
+                  size: 10, color: .secondaryLabelColor, weight: .medium, alignment: .right)
         if count == 0 {
             self.text(self.credits == nil ? L10n.text("等待重置信息更新") : L10n.text("暂无可用重置"),
                       rect: NSRect(x: 12, y: 49, width: self.bounds.width - 24, height: 18),
-                      size: 11, color: .secondaryLabelColor)
+                      size: 12, color: .secondaryLabelColor)
         }
         let cards = displayedCards
         let formatter = DateFormatter()
@@ -242,22 +242,24 @@ final class ResetCardsView: NSView {
             NSColor.labelColor.withAlphaComponent(0.13).setStroke()
             divider.stroke()
             self.text(nearest ? L10n.text("最近到期") : "", rect: NSRect(x: rect.minX, y: rect.minY + 63, width: rect.width, height: 13),
-                      size: 7, color: nearest ? accent : .tertiaryLabelColor, weight: .medium)
+                      size: 8, color: nearest ? accent : .tertiaryLabelColor, weight: .medium)
             self.text(expiration.map { formatter.string(from: $0) } ?? (cards[index] == nil ? L10n.text("日期待更新") : L10n.text("无到期时间")),
                       rect: NSRect(x: rect.minX, y: rect.minY + 6, width: rect.width, height: 11),
-                      size: 7.5, color: .secondaryLabelColor)
+                      size: 8.5, color: .secondaryLabelColor)
         }
     }
 
     private func drawResetHeader() {
-        let rect = NSRect(x: 12, y: 103, width: 134, height: 15)
+        // Keep the enlarged hint clear of the availability count on narrower card sets.
+        let headerWidth = min(150, max(134, self.bounds.width - 94))
+        let rect = NSRect(x: 12, y: 103, width: headerWidth, height: 15)
         let title = L10n.text("重置卡 · 剩余天数")
         let hint = L10n.text("点击使用重置卡")
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .left
         paragraph.lineBreakMode = .byTruncatingTail
         var titleSize: CGFloat = 9
-        var hintSize: CGFloat = 8
+        var hintSize: CGFloat = 9.5
 
         func header() -> NSAttributedString {
             let titleAttributes: [NSAttributedString.Key: Any] = [
@@ -267,7 +269,7 @@ final class ResetCardsView: NSView {
             ]
             let hintAttributes: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: hintSize, weight: .bold),
-                .foregroundColor: NSColor.labelColor,
+                .foregroundColor: NSColor.controlAccentColor,
                 .paragraphStyle: paragraph,
             ]
             let result = NSMutableAttributedString(string: title, attributes: titleAttributes)

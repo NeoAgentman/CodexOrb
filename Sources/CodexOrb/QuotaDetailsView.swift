@@ -41,7 +41,7 @@ final class QuotaDetailsView: NSView {
 
     private func rebuild() {
         self.subviews.forEach { $0.removeFromSuperview() }
-        self.label(L10n.text("额度详情"), x: 18, y: 249, width: 324, size: 13, weight: .semibold)
+        self.label(L10n.text("额度详情"), x: 18, y: 249, width: 324, size: 15, weight: .semibold)
         let fiveHour = self.usage?.fiveHourQuota
         // Identify the actual weekly window, including reversed primary/secondary slots.
         let weekly = [self.usage?.session, self.usage?.weekly].compactMap { $0 }
@@ -77,8 +77,8 @@ final class QuotaDetailsView: NSView {
     }
 
     private func row(_ title: String, value: String, fraction: Double?, color: NSColor, y: CGFloat) {
-        self.label(title, x: 18, y: y, width: 185, size: 11, weight: .medium)
-        self.label(value, x: 203, y: y, width: 139, size: 11, weight: .regular, alignment: .right)
+        self.label(title, x: 18, y: y, width: 185, size: 13, weight: .medium)
+        self.label(value, x: 203, y: y, width: 139, size: 13, weight: .regular, alignment: .right)
         let bar = QuotaDetailBar(frame: NSRect(x: 18, y: y - 16, width: 324, height: 7))
         bar.fraction = fraction
         bar.tint = color
