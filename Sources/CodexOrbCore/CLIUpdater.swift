@@ -113,11 +113,17 @@ public struct CLIUpdater: Sendable {
         let before = try CLIInstallationStore.digest(of: binary)
         let temp = work.appendingPathComponent("tmp")
         try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        let updateCache = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".opentoken/update", isDirectory: true)
+        try FileManager.default.createDirectory(at: updateCache, withIntermediateDirectories: true,
+                                                 attributes: [.posixPermissions: 0o700])
         var environment = ProcessInfo.processInfo.environment
         environment["TMPDIR"] = temp.path + "/"
         await progress("检查并更新临时副本…")
         let output = try await CLIUpdateProcess.run(binary, arguments: ["self-update"], timeout: 120,
-                                                   writableDirectory: work, environment: environment)
+                                                   writableDirectory: work,
+                                                   additionalWritableDirectories: [updateCache],
+                                                   environment: environment)
         let log = String(decoding: output.stdout + output.stderr, as: UTF8.self)
         guard output.status == 0, !log.contains("实时配置拉取失败"), !log.contains("结果可能过期") else {
             throw CLIUpdateError.channelUnavailable

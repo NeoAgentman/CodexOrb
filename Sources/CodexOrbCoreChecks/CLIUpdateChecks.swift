@@ -8,6 +8,7 @@ enum CLIUpdateChecks {
         try await self.checkIndependentUpdatesAndRetention()
         try await self.checkStagedOpenTokenReplacement()
         try await self.checkProcessAndSandbox()
+        try await self.checkOpenTokenUpdateCacheSandbox()
         print("OpenToken updater checks passed: version validation, rollback, locking, process limits and sandbox")
     }
 
@@ -100,6 +101,37 @@ enum CLIUpdateChecks {
         try self.expect(sandbox.status == 0, "sandbox allows staged writes: \(String(decoding: sandbox.stderr, as: UTF8.self))")
         try self.expect(try String(contentsOf: protected, encoding: .utf8) == "old", "self-update cannot overwrite external executable")
         try self.expect(FileManager.default.fileExists(atPath: work.appendingPathComponent("allowed").path), "staged output exists")
+    }
+
+    private static func checkOpenTokenUpdateCacheSandbox() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("orb-update-cache-sandbox-\(UUID().uuidString)")
+        defer { try? FileManager.default.trashItem(at: root, resultingItemURL: nil) }
+        let work = root.appendingPathComponent("work")
+        let update = root.appendingPathComponent("home/.opentoken/update")
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: update, withIntermediateDirectories: true)
+
+        let executable = work.appendingPathComponent("opentoken")
+        let script = """
+        #!/bin/sh
+        set -eu
+        printf 'download' > "$HOME/.opentoken/update/opentoken-0.3.28.download"
+        printf 'replacement' > "$0.new"
+        /bin/mv "$0.new" "$0"
+        """
+        try Data(script.utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+
+        var environment = ProcessInfo.processInfo.environment
+        environment["HOME"] = root.appendingPathComponent("home").path
+        let output = try await CLIUpdateProcess.run(executable, arguments: ["self-update"], timeout: 3,
+            writableDirectory: work, additionalWritableDirectories: [update], environment: environment)
+        try self.expect(output.status == 0,
+                        "sandbox allows OpenToken update cache writes: \(String(decoding: output.stderr, as: UTF8.self))")
+        try self.expect(FileManager.default.fileExists(atPath: update.appendingPathComponent("opentoken-0.3.28.download").path),
+                        "OpenToken update cache file exists")
+        try self.expect(try String(contentsOf: executable, encoding: .utf8) == "replacement",
+                        "staged executable replacement still works")
     }
 
     private static func checkStagedOpenTokenReplacement() async throws {

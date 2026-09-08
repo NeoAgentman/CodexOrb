@@ -112,9 +112,10 @@ Existing release directories remain available to already-running processes; temp
 to Trash. Separate file locks prevent concurrent updates of the same tool.
 The application bundle, global CLI installations and background service definitions are not modified.
 
-OpenToken's `self-update` runs on a staged executable with writes restricted to staging and temporary
-output. Signature, version and token JSON validation must pass before activation. No upload or daemon
-operation is invoked. The base version comes from `versions.json`.
+OpenToken's `self-update` runs on a staged executable with writes restricted to staging, temporary
+output, and its exact `~/.opentoken/update` cache directory. Signature, version and token JSON
+validation must pass before activation. No upload or daemon operation is invoked. The base version
+comes from `versions.json`.
 
 Codex app-server and OpenToken refresh concurrently but commit their results independently. Each source makes an initial
 request and, after a failure, retries up to three times with five seconds between attempts. A successful source updates

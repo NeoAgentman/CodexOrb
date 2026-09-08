@@ -11,17 +11,21 @@ public enum CLIUpdateProcess {
 
     public static func run(
         _ executable: URL, arguments: [String], timeout: TimeInterval = 30,
-        writableDirectory: URL? = nil, environment: [String: String]? = nil) async throws -> Output
+        writableDirectory: URL? = nil, additionalWritableDirectories: [URL] = [],
+        environment: [String: String]? = nil) async throws -> Output
     {
         try await Task.detached(priority: .utility) {
             try self.runBlocking(executable, arguments: arguments, timeout: timeout,
-                                 writableDirectory: writableDirectory, environment: environment)
+                                 writableDirectory: writableDirectory,
+                                 additionalWritableDirectories: additionalWritableDirectories,
+                                 environment: environment)
         }.value
     }
 
     private static func runBlocking(
         _ executable: URL, arguments: [String], timeout: TimeInterval,
-        writableDirectory: URL?, environment: [String: String]?) throws -> Output
+        writableDirectory: URL?, additionalWritableDirectories: [URL],
+        environment: [String: String]?) throws -> Output
     {
         let fm = FileManager.default
         let capture = fm.temporaryDirectory.appendingPathComponent("orb-cli-output-\(UUID().uuidString)")
@@ -47,10 +51,11 @@ public enum CLIUpdateProcess {
                     .replacingOccurrences(of: "\"", with: "\\\"")
                 return "\"\(path)\""
             }
-            let writablePath = try quoted(writableDirectory)
+            let writablePaths = try ([writableDirectory] + additionalWritableDirectories).compactMap { $0 }.map(quoted)
+            let writableRules = writablePaths.map { "(allow file-write* (subpath \($0)))" }.joined(separator: " ")
             let capturePath = try quoted(capture)
             let profile = "(version 1) (allow default) (deny file-write*) "
-                + "(allow file-write* (subpath \(writablePath))) "
+                + writableRules + " "
                 + "(allow file-write* (subpath \(capturePath)))"
             process.executableURL = URL(fileURLWithPath: "/usr/bin/sandbox-exec")
             process.arguments = ["-p", profile, executable.path] + arguments
