@@ -25,6 +25,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     private enum DefaultsKey {
+        static let scale = "CodexOrb.capsuleScale"
         static let centerX = "CodexOrb.windowCenterX"
         static let centerY = "CodexOrb.windowCenterY"
     }
@@ -35,6 +36,10 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
 
     private let panel: OrbPanel
     private let orbView: OrbView
+    private let defaults: UserDefaults
+    private var capsuleScale: CGFloat
+    private var resizeStartFrame: CGRect?
+    private var resizeEdge: CapsuleGeometry.Edge = []
     private var resetPopover: NSPopover?
     private var isHoveringCapsule = false
     private var isCapsuleExpanded = false
@@ -42,7 +47,9 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private var resizeTask: Task<Void, Never>?
     private var hoverDismissTask: Task<Void, Never>?
 
-    override init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        self.capsuleScale = CapsuleGeometry.scale(CGFloat(defaults.double(forKey: DefaultsKey.scale)))
         self.orbView = OrbView(frame: CGRect(origin: .zero, size: Layout.collapsedSize))
         self.panel = OrbPanel(
             contentRect: CGRect(origin: .zero, size: Layout.collapsedSize),
@@ -72,6 +79,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     func updateDefaultExpansion(_ expanded: Bool, animated: Bool = true) {
         self.isExpandedByDefault = expanded
         self.hoverDismissTask?.cancel()
+        guard self.resizeStartFrame == nil else { return }
         self.setCapsuleExpanded(expanded || self.isHoveringCapsule, animated: animated)
     }
 
@@ -110,9 +118,47 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.persistCenter()
     }
 
+    func orbView(_ view: OrbView, didBeginResizing edge: CapsuleGeometry.Edge) {
+        guard view === self.orbView else { return }
+        self.resizeTask?.cancel()
+        self.hoverDismissTask?.cancel()
+        // Preserve an in-flight hover animation's geometry while the user holds the edge.
+        self.resizeStartFrame = self.panel.frame
+        self.resizeEdge = edge
+        self.resetPopover?.close()
+    }
+
+    func orbView(_ view: OrbView, didResizeBy delta: CGPoint) {
+        guard view === self.orbView, let start = self.resizeStartFrame else { return }
+        let visible = self.panel.screen?.frame ?? start
+        let baseWidth = self.isCapsuleExpanded ? Layout.expandedSize.width : Layout.collapsedSize.width
+        let limit = min(CapsuleGeometry.maximumScale,
+                        (visible.width - 2 * Layout.edgeInset) / baseWidth,
+                        (visible.height - 2 * Layout.edgeInset) / Layout.expandedSize.height)
+        let frame = CapsuleGeometry.resizedFrame(start: start, delta: delta, edge: self.resizeEdge,
+                                                expanded: self.isCapsuleExpanded, maximumScale: limit,
+                                                logicalWidth: start.width / (start.height / Layout.expandedSize.height))
+        self.capsuleScale = frame.height / Layout.expandedSize.height
+        self.applyFrame(self.constrainedFrame(frame), display: true)
+    }
+
+    func orbViewDidFinishResizing(_ view: OrbView) {
+        guard view === self.orbView else { return }
+        self.resizeStartFrame = nil
+        self.resizeEdge = []
+        self.defaults.set(Double(self.capsuleScale), forKey: DefaultsKey.scale)
+        self.persistCenter()
+        self.setCapsuleExpanded(self.isCapsuleExpanded, force: true)
+        // Resume hover behavior on the next movement; do not expand beneath a released edge.
+        if !self.panel.frame.contains(NSEvent.mouseLocation) {
+            self.orbView(view, didChangeHover: false)
+        }
+    }
+
     func orbView(_ view: OrbView, didChangeHover isHovering: Bool) {
         guard view === self.orbView else { return }
         self.isHoveringCapsule = isHovering
+        guard self.resizeStartFrame == nil else { return }
         self.hoverDismissTask?.cancel()
         guard self.resetPopover?.isShown != true else { return }
         if isHovering {
@@ -136,9 +182,9 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.hoverDismissTask?.cancel()
         self.resizeTask?.cancel()
         var frame = self.panel.frame
-        frame.origin.x = frame.maxX - Layout.expandedSize.width
-        frame.size.width = Layout.expandedSize.width
-        self.panel.setFrame(self.constrainedFrame(frame), display: true)
+        frame.origin.x = frame.maxX - Layout.expandedSize.width * self.capsuleScale
+        frame.size.width = Layout.expandedSize.width * self.capsuleScale
+        self.applyFrame(self.constrainedFrame(frame), display: true)
         let popover = NSPopover()
         popover.behavior = .transient
         popover.animates = true
@@ -211,6 +257,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true
+        panel.acceptsMouseMovedEvents = true
         panel.isMovable = false
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
@@ -219,18 +266,18 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         panel.isExcludedFromWindowsMenu = true
     }
 
-    private func setCapsuleExpanded(_ expanded: Bool, animated: Bool = true) {
-        guard self.isCapsuleExpanded != expanded else { return }
+    private func setCapsuleExpanded(_ expanded: Bool, animated: Bool = true, force: Bool = false) {
+        guard force || self.isCapsuleExpanded != expanded else { return }
         self.isCapsuleExpanded = expanded
         self.resizeTask?.cancel()
         let startWidth = self.panel.frame.width
-        let targetWidth = expanded ? Layout.expandedSize.width : Layout.collapsedSize.width
+        let targetWidth = (expanded ? Layout.expandedSize.width : Layout.collapsedSize.width) * self.capsuleScale
         if !animated {
             var frame = self.panel.frame
             let right = frame.maxX
             frame.size.width = targetWidth
             frame.origin.x = right - frame.width
-            self.panel.setFrame(self.constrainedFrame(frame), display: true)
+            self.applyFrame(self.constrainedFrame(frame), display: true)
             self.orbView.needsDisplay = true
             return
         }
@@ -244,7 +291,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
                 let right = frame.maxX
                 frame.size.width = startWidth + (targetWidth - startWidth) * eased
                 frame.origin.x = right - frame.width
-                self.panel.setFrame(self.constrainedFrame(frame), display: true)
+                self.applyFrame(self.constrainedFrame(frame), display: true)
                 self.orbView.needsDisplay = true
                 if progress >= 1 { return }
                 do { try await Task.sleep(nanoseconds: 16_666_667) }
@@ -254,7 +301,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     private func restorePosition() {
-        let defaults = UserDefaults.standard
+        let defaults = self.defaults
         let storedX = defaults.object(forKey: DefaultsKey.centerX) as? Double
         let storedY = defaults.object(forKey: DefaultsKey.centerY) as? Double
         let fallbackScreen = NSScreen.main ?? NSScreen.screens.first
@@ -263,23 +310,32 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
             y: fallbackScreen?.frame.midY ?? 450)
         let center = CGPoint(x: storedX ?? fallbackCenter.x, y: storedY ?? fallbackCenter.y)
         let frame = CGRect(
-            x: center.x - Layout.collapsedSize.width / 2,
-            y: center.y - Layout.collapsedSize.height / 2,
-            width: Layout.collapsedSize.width,
-            height: Layout.collapsedSize.height)
-        self.panel.setFrame(self.constrainedFrame(frame), display: false)
+            x: center.x - Layout.collapsedSize.width * self.capsuleScale / 2,
+            y: center.y - Layout.collapsedSize.height * self.capsuleScale / 2,
+            width: Layout.collapsedSize.width * self.capsuleScale,
+            height: Layout.collapsedSize.height * self.capsuleScale)
+        self.applyFrame(self.constrainedFrame(frame), display: false)
+    }
+
+    private func applyFrame(_ frame: CGRect, display: Bool) {
+        self.panel.setFrame(frame, display: false)
+        self.orbView.bounds = CGRect(x: 0, y: 0, width: frame.width / self.capsuleScale,
+                                    height: frame.height / self.capsuleScale)
+        self.orbView.needsDisplay = true
+        self.panel.invalidateCursorRects(for: self.orbView)
+        if display { self.panel.displayIfNeeded() }
     }
 
     private func persistCenter() {
         let frame = self.panel.frame
-        UserDefaults.standard.set(Double(frame.maxX - Layout.collapsedSize.width / 2), forKey: DefaultsKey.centerX)
-        UserDefaults.standard.set(Double(frame.midY), forKey: DefaultsKey.centerY)
+        self.defaults.set(Double(frame.maxX - Layout.collapsedSize.width * self.capsuleScale / 2), forKey: DefaultsKey.centerX)
+        self.defaults.set(Double(frame.midY), forKey: DefaultsKey.centerY)
     }
 
     private func constrainToVisibleScreen() {
         let originalFrame = self.panel.frame
         let constrainedFrame = self.constrainedFrame(originalFrame)
-        self.panel.setFrame(constrainedFrame, display: true)
+        self.applyFrame(constrainedFrame, display: true)
     }
 
     private func constrainedFrame(_ frame: CGRect) -> CGRect {

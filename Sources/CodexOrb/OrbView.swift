@@ -4,6 +4,9 @@ import CodexOrbCore
 @MainActor
 protocol OrbViewDelegate: AnyObject {
     func orbView(_ view: OrbView, didDragBy delta: CGPoint)
+    func orbView(_ view: OrbView, didBeginResizing edge: CapsuleGeometry.Edge)
+    func orbView(_ view: OrbView, didResizeBy delta: CGPoint)
+    func orbViewDidFinishResizing(_ view: OrbView)
     func orbViewDidFinishDragging(_ view: OrbView)
     func orbView(_ view: OrbView, didChangeHover isHovering: Bool)
     func orbViewDidRequestResetCards(_ view: OrbView)
@@ -41,6 +44,9 @@ final class OrbView: NSView, NSMenuDelegate {
         }
     }
 
+    private var hoveredResizeEdge: CapsuleGeometry.Edge = []
+    private var isResizing = false
+    private var resizeStartLocation: CGPoint?
     private var pressedResetCards = false
     private var lastDragLocation: CGPoint?
     private var totalDragDistance: CGFloat = 0
@@ -67,6 +73,13 @@ final class OrbView: NSView, NSMenuDelegate {
         super.draw(dirtyRect)
         guard let context = NSGraphicsContext.current?.cgContext else { return }
         self.drawCollapsed(in: context)
+        if !self.hoveredResizeEdge.isEmpty {
+            let rect = self.bounds.insetBy(dx: 3, dy: 3)
+            let outline = NSBezierPath(roundedRect: rect, xRadius: rect.height / 2, yRadius: rect.height / 2)
+            outline.lineWidth = 1 / max(1, self.frame.height / 56)
+            NSColor.controlAccentColor.withAlphaComponent(0.7).setStroke()
+            outline.stroke()
+        }
     }
 
     override func updateTrackingAreas() {
@@ -76,35 +89,94 @@ final class OrbView: NSView, NSMenuDelegate {
         }
         let trackingArea = NSTrackingArea(
             rect: self.bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways, .inVisibleRect],
             owner: self,
             userInfo: nil)
         self.addTrackingArea(trackingArea)
         self.trackingArea = trackingArea
     }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseEntered(with event: NSEvent) {
         _ = event
-        self.delegate?.orbView(self, didChangeHover: true)
+        self.mouseMoved(with: event)
     }
 
     override func mouseExited(with event: NSEvent) {
         _ = event
+        if !self.isResizing { self.updateResizeCursor([]) }
         self.delegate?.orbView(self, didChangeHover: false)
     }
 
+    private func resizeEdge(at point: CGPoint) -> CapsuleGeometry.Edge {
+        CapsuleGeometry.resizeEdge(at: point, bounds: self.bounds, scale: self.frame.height / 56)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        let step = 4 / max(1, self.frame.height / 56)
+        for x in stride(from: self.bounds.minX, to: self.bounds.maxX, by: step) {
+            for y in stride(from: self.bounds.minY, to: self.bounds.maxY, by: step) {
+                let rect = CGRect(x: x, y: y, width: step, height: step).intersection(self.bounds)
+                let edge = self.resizeEdge(at: CGPoint(x: rect.midX, y: rect.midY))
+                if !edge.isEmpty { self.addCursorRect(rect, cursor: self.resizeCursor(edge)) }
+            }
+        }
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard !self.isResizing else { return }
+        let edge = self.resizeEdge(at: self.convert(event.locationInWindow, from: nil))
+        self.updateResizeCursor(edge)
+        if edge.isEmpty { self.delegate?.orbView(self, didChangeHover: true) }
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        self.updateResizeCursor(self.resizeEdge(at: self.convert(event.locationInWindow, from: nil)))
+    }
+
+    private func resizeCursor(_ edge: CapsuleGeometry.Edge) -> NSCursor {
+        if edge.contains(.left) || edge.contains(.right) { return .resizeLeftRight }
+        return edge.isEmpty ? .arrow : .resizeUpDown
+    }
+
+    private func updateResizeCursor(_ edge: CapsuleGeometry.Edge) {
+        if self.hoveredResizeEdge != edge {
+            self.hoveredResizeEdge = edge
+            self.needsDisplay = true
+        }
+        self.resizeCursor(edge).set()
+    }
+
+    private func screenLocation(of event: NSEvent) -> CGPoint {
+        self.window?.convertPoint(toScreen: event.locationInWindow) ?? event.locationInWindow
+    }
+
     override func mouseDown(with event: NSEvent) {
-        _ = event
+        let edge = self.resizeEdge(at: self.convert(event.locationInWindow, from: nil))
+        if !edge.isEmpty {
+            self.updateResizeCursor(edge)
+            self.isResizing = true
+            self.resizeStartLocation = self.screenLocation(of: event)
+            self.delegate?.orbView(self, didBeginResizing: edge)
+            return
+        }
         self.pressedResetCards = self.resetCardsRect.contains(self.convert(event.locationInWindow, from: nil))
             && self.bounds.width >= Self.minimumExpandedHitWidth
-        self.lastDragLocation = NSEvent.mouseLocation
+        self.lastDragLocation = self.screenLocation(of: event)
         self.totalDragDistance = 0
     }
 
     override func mouseDragged(with event: NSEvent) {
         _ = event
+        if self.isResizing, let start = self.resizeStartLocation {
+            let current = self.screenLocation(of: event)
+            self.delegate?.orbView(self, didResizeBy: CGPoint(x: current.x - start.x, y: current.y - start.y))
+            return
+        }
         guard let previous = self.lastDragLocation else { return }
-        let current = NSEvent.mouseLocation
+        let current = self.screenLocation(of: event)
         let delta = CGPoint(x: current.x - previous.x, y: current.y - previous.y)
         self.totalDragDistance += hypot(delta.x, delta.y)
         self.lastDragLocation = current
@@ -112,6 +184,13 @@ final class OrbView: NSView, NSMenuDelegate {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if self.isResizing {
+            self.isResizing = false
+            self.resizeStartLocation = nil
+            self.delegate?.orbViewDidFinishResizing(self)
+            self.updateResizeCursor(self.resizeEdge(at: self.convert(event.locationInWindow, from: nil)))
+            return
+        }
         let location = self.convert(event.locationInWindow, from: nil)
         defer {
             self.pressedResetCards = false
@@ -141,7 +220,7 @@ final class OrbView: NSView, NSMenuDelegate {
         quit.target = self
         menu.addItem(quit)
         // Keep the menu's available space independent of the small nonactivating panel.
-        let location = self.window?.convertPoint(toScreen: event.locationInWindow) ?? NSEvent.mouseLocation
+        let location = self.window?.convertPoint(toScreen: event.locationInWindow) ?? self.screenLocation(of: event)
         menu.popUp(positioning: nil, at: location, in: nil)
     }
 
