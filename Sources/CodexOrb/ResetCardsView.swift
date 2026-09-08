@@ -250,45 +250,11 @@ final class ResetCardsView: NSView {
     }
 
     private func drawResetHeader() {
-        // Keep the enlarged hint clear of the availability count on narrower card sets.
+        // Keep the title clear of the availability count on narrower card sets.
         let headerWidth = min(150, max(134, self.bounds.width - 94))
-        let rect = NSRect(x: 12, y: 103, width: headerWidth, height: 15)
-        let title = L10n.text("重置卡 · 剩余天数")
-        let hint = L10n.text("点击使用重置卡")
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .left
-        paragraph.lineBreakMode = .byTruncatingTail
-        var titleSize: CGFloat = 9
-        var hintSize: CGFloat = 9.5
-
-        func header() -> NSAttributedString {
-            let titleAttributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: titleSize, weight: .semibold),
-                .foregroundColor: NSColor.labelColor,
-                .paragraphStyle: paragraph,
-            ]
-            let hintAttributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: hintSize, weight: .bold),
-                .foregroundColor: NSColor.controlAccentColor,
-                .paragraphStyle: paragraph,
-            ]
-            let result = NSMutableAttributedString(string: title, attributes: titleAttributes)
-            result.append(NSAttributedString(string: " · ", attributes: titleAttributes))
-            result.append(NSAttributedString(string: hint, attributes: hintAttributes))
-            return result
-        }
-
-        var result = header()
-        while result.boundingRect(
-            with: NSSize(width: CGFloat.greatestFiniteMagnitude, height: rect.height),
-            options: [.usesLineFragmentOrigin, .usesFontLeading]).width > rect.width,
-              hintSize > 6
-        {
-            titleSize -= 0.25
-            hintSize -= 0.25
-            result = header()
-        }
-        result.draw(in: rect)
+        self.text(L10n.text("重置卡 · 剩余天数"),
+                  rect: NSRect(x: 12, y: 103, width: headerWidth, height: 15),
+                  size: 9, color: .labelColor, weight: .semibold, alignment: .left)
     }
 }
 
