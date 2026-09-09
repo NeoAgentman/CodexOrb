@@ -21,6 +21,12 @@ protocol OrbViewDelegate: AnyObject {
 final class OrbView: NSView, NSMenuDelegate {
     private static let minimumExpandedHitWidth: CGFloat = 164
 
+    private enum ContentRegion: Equatable {
+        case quota
+        case tokens
+        case resets
+    }
+
     weak var delegate: OrbViewDelegate?
 
     var displayState: OrbDisplayState = .loading(previous: nil) {
@@ -37,6 +43,7 @@ final class OrbView: NSView, NSMenuDelegate {
     private var pressedQuotaDetails = false
     private var pressedTokenDetails = false
     private var pressedResetCards = false
+    private var hoveredContentRegion: ContentRegion?
     private var lastDragLocation: CGPoint?
     private var totalDragDistance: CGFloat = 0
     private var trackingArea: NSTrackingArea?
@@ -95,6 +102,7 @@ final class OrbView: NSView, NSMenuDelegate {
     override func mouseExited(with event: NSEvent) {
         _ = event
         if !self.isResizing { self.updateResizeCursor([]) }
+        self.updateHoveredContentRegion(nil)
         self.delegate?.orbView(self, didChangeHover: false)
     }
 
@@ -116,9 +124,15 @@ final class OrbView: NSView, NSMenuDelegate {
 
     override func mouseMoved(with event: NSEvent) {
         guard !self.isResizing else { return }
-        let edge = self.resizeEdge(at: self.convert(event.locationInWindow, from: nil))
+        let point = self.convert(event.locationInWindow, from: nil)
+        let edge = self.resizeEdge(at: point)
         self.updateResizeCursor(edge)
-        if edge.isEmpty { self.delegate?.orbView(self, didChangeHover: true) }
+        if edge.isEmpty {
+            self.updateHoveredContentRegion(self.contentRegion(at: point))
+            self.delegate?.orbView(self, didChangeHover: true)
+        } else {
+            self.updateHoveredContentRegion(nil)
+        }
     }
 
     override func cursorUpdate(with event: NSEvent) {
@@ -158,6 +172,7 @@ final class OrbView: NSView, NSMenuDelegate {
             && self.bounds.width >= Self.minimumExpandedHitWidth
         self.lastDragLocation = self.screenLocation(of: event)
         self.totalDragDistance = 0
+        self.needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -190,6 +205,7 @@ final class OrbView: NSView, NSMenuDelegate {
             self.pressedResetCards = false
             self.lastDragLocation = nil
             self.totalDragDistance = 0
+            self.needsDisplay = true
         }
         if self.totalDragDistance >= 4 {
             self.delegate?.orbViewDidFinishDragging(self)
@@ -244,6 +260,7 @@ final class OrbView: NSView, NSMenuDelegate {
         let capsule = self.bounds.insetBy(dx: 3, dy: 3)
         let radius = capsule.height / 2
         colors.drawBackground(in: capsule, cornerRadius: radius, context: context)
+        self.drawInteractionHighlight(in: context)
 
         let usage = self.displayState.usage
         let gauge = self.ringGauge
@@ -319,6 +336,59 @@ final class OrbView: NSView, NSMenuDelegate {
             context.setFillColor(NSColor.systemOrange.cgColor)
             context.fillEllipse(in: marker)
         }
+    }
+
+    private var pressedContentRegion: ContentRegion? {
+        if self.pressedQuotaDetails { return .quota }
+        if self.pressedTokenDetails { return .tokens }
+        if self.pressedResetCards { return .resets }
+        return nil
+    }
+
+    private func contentRegion(at point: CGPoint) -> ContentRegion? {
+        if self.quotaDetailsRect.contains(point) { return .quota }
+        if self.tokenConsumptionContains(point) { return .tokens }
+        if self.bounds.width >= Self.minimumExpandedHitWidth && self.resetCardsRect.contains(point) {
+            return .resets
+        }
+        return nil
+    }
+
+    private func updateHoveredContentRegion(_ region: ContentRegion?) {
+        guard self.hoveredContentRegion != region else { return }
+        self.hoveredContentRegion = region
+        self.needsDisplay = true
+    }
+
+    private func drawInteractionHighlight(in context: CGContext) {
+        guard let region = self.pressedContentRegion ?? self.hoveredContentRegion else { return }
+        let pressed = self.pressedContentRegion != nil
+        let color = (pressed ? NSColor.controlAccentColor : NSColor.labelColor)
+            .withAlphaComponent(pressed ? 0.10 : 0.04)
+        let highlight: (rect: CGRect, radius: CGFloat)
+        switch region {
+        case .quota:
+            let rect = self.quotaDetailsRect
+            highlight = (rect, rect.height / 2)
+        case .tokens:
+            let rect = self.tokenConsumptionRect
+            highlight = (CGRect(x: rect.minX - 4, y: rect.minY - 8,
+                                width: rect.width + 8, height: rect.height + 13), 10)
+        case .resets:
+            let rect = self.resetCardsRect.insetBy(dx: 1, dy: 1)
+            highlight = (rect, 9)
+        }
+
+        let capsule = self.bounds.insetBy(dx: 3, dy: 3)
+        context.saveGState()
+        context.addPath(CGPath(roundedRect: capsule, cornerWidth: capsule.height / 2,
+                               cornerHeight: capsule.height / 2, transform: nil))
+        context.clip()
+        context.setFillColor(color.cgColor)
+        context.addPath(CGPath(roundedRect: highlight.rect, cornerWidth: highlight.radius,
+                               cornerHeight: highlight.radius, transform: nil))
+        context.fillPath()
+        context.restoreGState()
     }
 
     var quotaDetailsRect: CGRect {
