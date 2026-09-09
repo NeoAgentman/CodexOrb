@@ -67,7 +67,7 @@ opentoken preview --since <today> --json
 
 ## 源码检出
 
-仓库包含固定版本的 OpenToken 0.3.27 和 SHA256SUMS。CodexBar 及其配套资源已不再打包。
+仓库包含固定版本的 OpenToken 0.3.28 和 SHA256SUMS。CodexBar 及其配套资源已不再打包。
 外部 Codex 的 profile-home 配置不用于 CodexOrb 账号管理。`Scripts/import_cli_tools.sh /path/to/opentoken`
 是可选的维护者工具。它会校验固定版本和签名并重新生成校验和，不会复制凭据或配置。
 
