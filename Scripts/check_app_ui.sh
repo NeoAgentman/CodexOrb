@@ -15,6 +15,7 @@ checks = [
     ('popover', ['AccountBadgeView.swift', 'CapsuleSurfaceStyle.swift', 'CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift', 'TokenDetailsView.swift'], 'check_reset_popover.swift'),
     ('token-details', ['AccountBadgeView.swift', 'CapsuleSurfaceStyle.swift', 'CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift', 'TokenDetailsView.swift'], 'check_token_details_popover.swift'),
     ('reset', ['ResetCardsView.swift', 'ResetConfirmation.swift'], 'check_reset_cards.swift'),
+    ('quota-forecast', ['QuotaDetailsView.swift'], 'check_quota_forecast.swift'),
     ('capsule', ['AccountBadgeView.swift', 'CapsuleSurfaceStyle.swift', 'CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift', 'TokenDetailsView.swift'], 'check_capsule_resize.swift'),
 ]
 with tempfile.TemporaryDirectory(prefix='codexorb-ui-check-') as directory:

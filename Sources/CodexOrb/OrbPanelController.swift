@@ -61,6 +61,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private var capsuleScale: CGFloat
     private var accountInfo: AccountBadgeInfo?
     private var accountChoices: [AccountBadgeInfo] = []
+    private var forecast: CodexResetForecast?
     private var resizeStartFrame: CGRect?
     private var resizeEdge: CapsuleGeometry.Edge = []
     private enum DetailKind { case resets, quota, tokens }
@@ -172,6 +173,12 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         if let popover = self.resetPopover, popover.isShown {
             self.configureDetailContent(popover)
         }
+    }
+
+    func updateForecast(_ forecast: CodexResetForecast?) {
+        self.forecast = forecast
+        guard let popover = self.resetPopover, popover.isShown, self.detailKind == .quota else { return }
+        self.configureDetailContent(popover)
     }
 
     func orbView(_ view: OrbView, didDragBy delta: CGPoint) {
@@ -356,10 +363,10 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
             return
         }
         if let content = popover.contentViewController?.view as? QuotaDetailsView {
-            content.update(self.orbView.displayState.usage)
+            content.update(self.orbView.displayState.usage, forecast: self.forecast)
             return
         }
-        let content = QuotaDetailsView(usage: self.orbView.displayState.usage)
+        let content = QuotaDetailsView(usage: self.orbView.displayState.usage, forecast: self.forecast)
         content.onClose = { [weak popover] in popover?.performClose(nil) }
         let controller = NSViewController()
         controller.view = content

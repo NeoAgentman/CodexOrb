@@ -5,12 +5,15 @@ import CodexOrbCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings: AppSettings
     private var usageSource: CombinedUsageSource
+    private let forecastSource = CodexResetForecastSource()
     private let panelController = OrbPanelController()
     private var settingsWindowController: SettingsWindowController?
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
     private var refreshID: UUID?
     private var lastUsage: CodexUsage?
+    private var forecastTask: Task<Void, Never>?
+    private var forecastRefreshID: UUID?
     private var resetTask: Task<Void, Never>?
 
     override init() {
@@ -53,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = notification
         self.refreshTimer?.invalidate()
         self.refreshTask?.cancel()
+        self.forecastTask?.cancel()
         self.resetTask?.cancel()
         self.settingsWindowController?.close()
         self.panelController.close()
@@ -70,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refresh() {
         self.updateResetRecovery()
         self.updateAccountBadge()
+        self.refreshForecast()
         guard self.refreshID == nil, self.resetTask == nil else { return }
         let account = self.selectedManagedAccount
         guard let account else {
@@ -115,6 +120,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                     self?.apply(update, errors: errors, isFinal: remainingSources == 0)
                 }
+            }
+        }
+    }
+
+    private func refreshForecast() {
+        guard self.forecastRefreshID == nil else { return }
+        let refreshID = UUID()
+        self.forecastRefreshID = refreshID
+        let source = self.forecastSource
+        let timeZone = TimeZone.current.identifier
+        self.forecastTask = Task { [weak self] in
+            defer {
+                if self?.forecastRefreshID == refreshID {
+                    self?.forecastRefreshID = nil
+                    self?.forecastTask = nil
+                }
+            }
+            do {
+                let forecast = try await source.fetch(timeZone: timeZone)
+                guard !Task.isCancelled, self?.forecastRefreshID == refreshID else { return }
+                self?.panelController.updateForecast(forecast)
+            } catch {
+                // Forecast is advisory and independent from account quota state.
+                // Keep the last successful value without changing the quota status.
             }
         }
     }

@@ -9,6 +9,7 @@ enum CodexOrbCoreChecks {
             print("CodexOrb live GUI environment check passed")
             return
         }
+        try await ForecastChecks.run()
         try await AppServerChecks.run()
         try LocalizationChecks.run()
         try await AccountChecks.run()

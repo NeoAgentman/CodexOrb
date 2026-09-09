@@ -5,14 +5,16 @@ import CodexOrbCore
 final class QuotaDetailsView: NSView {
     var onClose: (() -> Void)?
     private var usage: CodexUsage?
+    private var forecast: CodexResetForecast?
     private var countdownTask: Task<Void, Never>?
     override var acceptsFirstResponder: Bool { true }
 
-    init(usage: CodexUsage?) {
+    init(usage: CodexUsage?, forecast: CodexResetForecast? = nil) {
         self.usage = usage
-        super.init(frame: NSRect(x: 0, y: 0, width: 288, height: 227.2))
+        self.forecast = forecast
+        super.init(frame: NSRect(x: 0, y: 0, width: 288, height: 288))
         // Scale the complete card uniformly, including labels, bars and spacing.
-        self.bounds = NSRect(x: 0, y: 0, width: 360, height: 284)
+        self.bounds = NSRect(x: 0, y: 0, width: 360, height: 360)
         self.rebuild()
     }
 
@@ -35,22 +37,80 @@ final class QuotaDetailsView: NSView {
     }
 
     func update(_ usage: CodexUsage?) {
+        self.update(usage, forecast: self.forecast)
+    }
+
+    func update(_ usage: CodexUsage?, forecast: CodexResetForecast?) {
         self.usage = usage
+        self.forecast = forecast
         self.rebuild()
     }
 
     private func rebuild() {
         self.subviews.forEach { $0.removeFromSuperview() }
-        self.label(L10n.text("额度详情"), x: 18, y: 249, width: 324, size: 15, weight: .semibold)
+        self.label(L10n.text("额度详情"), x: 18, y: 324, width: 324, size: 15, weight: .semibold)
         let fiveHour = self.usage?.fiveHourQuota
         // Identify the actual weekly window, including reversed primary/secondary slots.
         let weekly = [self.usage?.session, self.usage?.weekly].compactMap { $0 }
             .first { $0.windowMinutes == 10_080 }
         let now = Date()
-        self.quotaRow(L10n.text("5 小时剩余额度"), quota: fiveHour, y: 209)
-        self.timeRow(L10n.text("5 小时重置剩余时间"), quota: fiveHour, duration: 5 * 3600, now: now, y: 153)
-        self.quotaRow(L10n.text("周剩余额度"), quota: weekly, y: 97)
-        self.timeRow(L10n.text("周重置剩余时间"), quota: weekly, duration: 7 * 86400, now: now, y: 41)
+        self.quotaRow(L10n.text("5 小时剩余额度"), quota: fiveHour, y: 284)
+        self.timeRow(L10n.text("5 小时重置剩余时间"), quota: fiveHour, duration: 5 * 3600, now: now, y: 228)
+        self.quotaRow(L10n.text("周剩余额度"), quota: weekly, y: 172)
+        self.timeRow(L10n.text("周重置剩余时间"), quota: weekly, duration: 7 * 86400, now: now, y: 116)
+        self.forecastSection()
+    }
+
+    private func forecastSection() {
+        let separator = NSBox(frame: NSRect(x: 18, y: 86, width: 324, height: 2))
+        separator.boxType = .separator
+        self.addSubview(separator)
+        self.label(L10n.text("全局重置预测"), x: 18, y: 60, width: 160, size: 13, weight: .semibold)
+        let confidence = self.forecast?.confidence ?? L10n.text("未知")
+        self.label(
+            L10n.text("置信度：\(confidence)"),
+            x: 180,
+            y: 60,
+            width: 162,
+            size: 12,
+            weight: .semibold,
+            alignment: .right)
+        self.forecastColumn(
+            L10n.text("24 小时内"),
+            value: self.forecast?.probability24h,
+            x: 18)
+        self.forecastColumn(
+            L10n.text("48 小时内"),
+            value: self.forecast?.probability48h,
+            x: 192)
+    }
+
+    private func forecastColumn(_ title: String, value: Int?, x: CGFloat) {
+        let width: CGFloat = 150
+        let valueText = value.map { "\($0)%" } ?? L10n.text("未知")
+        self.label(
+            title,
+            x: x,
+            y: 31,
+            width: 110,
+            size: 12,
+            weight: .medium)
+        self.label(
+            valueText,
+            x: x + 110,
+            y: 31,
+            width: 40,
+            size: 13,
+            weight: .regular,
+            alignment: .right)
+        let bar = QuotaDetailBar(frame: NSRect(x: x, y: 15, width: width, height: 7))
+        bar.fraction = value.map { CGFloat($0) / CGFloat(100) }
+        bar.tint = .controlAccentColor
+        bar.setAccessibilityElement(true)
+        bar.setAccessibilityRole(.progressIndicator)
+        bar.setAccessibilityLabel(title)
+        bar.setAccessibilityValue(valueText)
+        self.addSubview(bar)
     }
 
     private func quotaRow(_ title: String, quota: CodexQuotaWindow?, y: CGFloat) {
@@ -90,11 +150,11 @@ final class QuotaDetailsView: NSView {
     }
 
     private func label(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat, size: CGFloat,
-                       weight: NSFont.Weight, alignment: NSTextAlignment = .left) {
+                       weight: NSFont.Weight, alignment: NSTextAlignment = .left, height: CGFloat = 18) {
         let label = NSTextField(labelWithString: text)
         label.font = .monospacedDigitSystemFont(ofSize: size, weight: weight)
         label.alignment = alignment
-        label.frame = NSRect(x: x, y: y, width: width, height: 18)
+        label.frame = NSRect(x: x, y: y, width: width, height: height)
         self.addSubview(label)
     }
 }
