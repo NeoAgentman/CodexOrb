@@ -13,7 +13,7 @@
 .vscode/
 
 # Local research notes
-/research/easycliproxyapi-codex-reset-credits.md
+/research/
 
 # Credentials, private configuration and runtime data
 .env
