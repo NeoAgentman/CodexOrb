@@ -33,6 +33,20 @@ struct AccountBadgeChecks {
             height: AccountBadgeLayout.baseSize))
         view.account = info
         expect((view.accessibilityValue() as? String) == info.label, "Badge accessibility value")
+
+        let other = AccountBadgeInfo(identityKey: "other-account", email: "other@example.test", workspace: "team")
+        var selectedIdentity: String?
+        let details = AccountDetailsView(account: info, accounts: [info, other]) { selectedIdentity = $0 }
+        func buttons(in view: NSView) -> [NSButton] {
+            view.subviews.flatMap { subview in
+                if let button = subview as? NSButton { return [button] }
+                return buttons(in: subview)
+            }
+        }
+        let accountRows = buttons(in: details)
+        expect(accountRows.count == 2, "Account switcher rows")
+        accountRows[1].performClick(nil)
+        expect(selectedIdentity == other.identityKey, "Account switcher selection")
         print("Account badge placement and account presentation checks passed")
     }
 }

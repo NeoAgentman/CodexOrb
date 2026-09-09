@@ -2,8 +2,19 @@ import AppKit
 import CodexOrbCore
 
 struct AccountBadgeInfo: Equatable {
+    let identityKey: String
     let email: String
     let workspace: String
+
+    init(identityKey: String = "", email: String, workspace: String) {
+        self.identityKey = identityKey
+        self.email = email
+        self.workspace = workspace
+    }
+
+    init(account: CodexAccount) {
+        self.init(identityKey: account.identityKey, email: account.email, workspace: account.workspace)
+    }
 
     var initial: String {
         self.email.first.map { String($0).uppercased() } ?? "?"
@@ -148,34 +159,39 @@ final class AccountBadgePanel: NSPanel {
 
 @MainActor
 final class AccountDetailsView: NSView {
-    init(account: AccountBadgeInfo) {
-        super.init(frame: NSRect(x: 0, y: 0, width: 268, height: 92))
+    private static let cardWidth: CGFloat = 300
+    private static let horizontalPadding: CGFloat = 16
+    private static let rowHeight: CGFloat = 28
+    private let currentAccount: AccountBadgeInfo
+    private let accounts: [AccountBadgeInfo]
+    private let canSwitch: Bool
+    private let onSelect: (String) -> Void
+
+    init(
+        account: AccountBadgeInfo,
+        accounts: [AccountBadgeInfo] = [],
+        canSwitch: Bool = true,
+        onSelect: @escaping (String) -> Void = { _ in })
+    {
+        self.currentAccount = account
+        self.accounts = accounts
+        self.canSwitch = canSwitch
+        self.onSelect = onSelect
+        let height: CGFloat
+        if accounts.count > 1 {
+            let itemHeights: CGFloat = 18 + 24 + 16 + 1 + 16 + CGFloat(accounts.count) * Self.rowHeight
+            let gaps = CGFloat(accounts.count + 4) * 5
+            height = 28 + itemHeights + gaps
+        } else {
+            height = 96
+        }
+        super.init(frame: NSRect(x: 0, y: 0, width: Self.cardWidth, height: height))
         self.setAccessibilityElement(true)
         self.setAccessibilityRole(.group)
         self.setAccessibilityLabel(L10n.text("当前账号"))
         self.setAccessibilityValue(account.label)
 
-        let title = self.label(
-            L10n.text("当前账号"),
-            frame: NSRect(x: 16, y: 65, width: 236, height: 18),
-            font: .systemFont(ofSize: 11, weight: .semibold),
-            color: .secondaryLabelColor)
-        self.addSubview(title)
-
-        let email = self.label(
-            account.email,
-            frame: NSRect(x: 16, y: 37, width: 236, height: 24),
-            font: .systemFont(ofSize: 14, weight: .medium),
-            color: .labelColor)
-        email.lineBreakMode = .byTruncatingMiddle
-        self.addSubview(email)
-
-        let workspace = self.label(
-            L10n.text("账号类型：\(account.workspace)"),
-            frame: NSRect(x: 16, y: 14, width: 236, height: 16),
-            font: .systemFont(ofSize: 11, weight: .regular),
-            color: .secondaryLabelColor)
-        self.addSubview(workspace)
+        self.buildContent()
     }
 
     @available(*, unavailable)
@@ -183,13 +199,119 @@ final class AccountDetailsView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    private func label(_ text: String, frame: NSRect, font: NSFont, color: NSColor) -> NSTextField {
+    private func buildContent() {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 5
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        self.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: self.leadingAnchor, constant: Self.horizontalPadding),
+            stack.trailingAnchor.constraint(equalTo: self.trailingAnchor, constant: -Self.horizontalPadding),
+            stack.topAnchor.constraint(equalTo: self.topAnchor, constant: 14),
+            stack.bottomAnchor.constraint(equalTo: self.bottomAnchor, constant: -14),
+        ])
+
+        let title = self.label(
+            L10n.text("当前账号"),
+            height: 18,
+            font: .systemFont(ofSize: 11, weight: .semibold),
+            color: .secondaryLabelColor)
+        stack.addArrangedSubview(title)
+
+        let email = self.label(
+            self.currentAccount.email,
+            height: 24,
+            font: .systemFont(ofSize: 14, weight: .medium),
+            color: .labelColor)
+        email.lineBreakMode = .byTruncatingMiddle
+        stack.addArrangedSubview(email)
+
+        let workspace = self.label(
+            L10n.text("账号类型：\(self.currentAccount.workspace)"),
+            height: 16,
+            font: .systemFont(ofSize: 11, weight: .regular),
+            color: .secondaryLabelColor)
+        stack.addArrangedSubview(workspace)
+
+        guard self.accounts.count > 1 else { return }
+        let separator = NSBox()
+        separator.boxType = .separator
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        separator.widthAnchor.constraint(equalToConstant: Self.cardWidth - 2 * Self.horizontalPadding).isActive = true
+        separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
+        stack.addArrangedSubview(separator)
+
+        let switchTitle = self.label(
+            L10n.text("切换账号"),
+            height: 16,
+            font: .systemFont(ofSize: 11, weight: .semibold),
+            color: .secondaryLabelColor)
+        stack.addArrangedSubview(switchTitle)
+
+        for account in self.accounts {
+            let row = AccountRowButton(
+                account: account,
+                selected: account.identityKey == self.currentAccount.identityKey,
+                enabled: self.canSwitch)
+            row.target = self
+            row.action = #selector(self.accountRowClicked(_:))
+            row.translatesAutoresizingMaskIntoConstraints = false
+            row.widthAnchor.constraint(equalToConstant: Self.cardWidth - 2 * Self.horizontalPadding).isActive = true
+            row.heightAnchor.constraint(equalToConstant: Self.rowHeight).isActive = true
+            stack.addArrangedSubview(row)
+        }
+    }
+
+    private func label(_ text: String, height: CGFloat, font: NSFont, color: NSColor) -> NSTextField {
         let result = NSTextField(labelWithString: text)
         result.font = font
         result.textColor = color
         result.usesSingleLineMode = true
         result.alignment = .left
-        result.frame = frame
+        result.translatesAutoresizingMaskIntoConstraints = false
+        result.widthAnchor.constraint(equalToConstant: Self.cardWidth - 2 * Self.horizontalPadding).isActive = true
+        result.heightAnchor.constraint(equalToConstant: height).isActive = true
         return result
+    }
+
+    @objc private func accountRowClicked(_ sender: Any?) {
+        guard self.canSwitch, let row = sender as? AccountRowButton,
+              row.identityKey != self.currentAccount.identityKey else { return }
+        self.onSelect(row.identityKey)
+    }
+
+    private final class AccountRowButton: NSButton {
+        let identityKey: String
+
+        init(account: AccountBadgeInfo, selected: Bool, enabled: Bool) {
+            self.identityKey = account.identityKey
+            super.init(frame: .zero)
+            self.title = account.label
+            self.font = .systemFont(ofSize: 12, weight: selected ? .medium : .regular)
+            self.alignment = .left
+            self.isBordered = false
+            self.bezelStyle = .inline
+            self.setButtonType(.momentaryPushIn)
+            self.contentTintColor = selected ? .labelColor : .secondaryLabelColor
+            self.image = selected
+                ? NSImage(systemSymbolName: "checkmark", accessibilityDescription: L10n.text("当前账号"))
+                : nil
+            self.imagePosition = .imageLeading
+            self.imageScaling = .scaleProportionallyDown
+            self.isEnabled = enabled
+            self.setAccessibilityElement(true)
+            self.setAccessibilityRole(.button)
+            self.setAccessibilityLabel(account.label)
+            self.setAccessibilityValue(selected ? L10n.text("当前账号") : "")
+            self.cell?.lineBreakMode = .byTruncatingTail
+            self.cell?.usesSingleLineMode = true
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
+        }
     }
 }

@@ -28,6 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panelController.onSettings = { [weak self] in
             self?.showSettings()
         }
+        self.panelController.onAccountSelected = { [weak self] identityKey in
+            self?.selectAccount(identityKey: identityKey)
+        }
         self.panelController.onConsumeReset = { [weak self] id in self?.consumeReset(id) }
         self.panelController.onDiscardDamagedReset = { [weak self] in self?.discardDamagedReset() }
         self.panelController.onQuit = {
@@ -37,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panelController.updateDefaultExpansion(
             self.settings.capsuleExpandedByDefault,
             animated: false)
-        self.panelController.updateAccount(self.selectedManagedAccount)
+        self.updateAccountBadge()
         self.panelController.show()
         self.refresh()
         self.scheduleRefreshTimer()
@@ -63,9 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func refresh() {
         self.updateResetRecovery()
+        self.updateAccountBadge()
         guard self.refreshID == nil, self.resetTask == nil else { return }
         let account = self.selectedManagedAccount
-        self.panelController.updateAccount(account)
         guard let account else {
             self.lastUsage = nil
             self.panelController.update(.empty)
@@ -157,6 +160,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.present()
     }
 
+    private func updateAccountBadge() {
+        self.panelController.updateAccounts(
+            CodexAccountStore().managedAccounts(),
+            selected: self.selectedManagedAccount)
+    }
+
+    private func selectAccount(identityKey: String) {
+        guard self.resetTask == nil else { return }
+        guard let account = CodexAccountStore().managedAccounts().first(where: { $0.identityKey == identityKey }) else {
+            self.updateAccountBadge()
+            return
+        }
+        guard account.identityKey != self.selectedManagedAccount?.identityKey else { return }
+        var next = self.settings
+        next.accountHome = account.home
+        self.apply(next)
+    }
+
     private func apply(_ settings: AppSettings) {
         var previousWithLanguage = self.settings
         previousWithLanguage.language = settings.language
@@ -170,7 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.settings = settings
         settings.save()
         self.panelController.reloadLanguage()
-        self.panelController.updateAccount(self.selectedManagedAccount)
+        self.updateAccountBadge()
         self.panelController.updateDefaultExpansion(settings.capsuleExpandedByDefault)
         self.usageSource = CombinedUsageSource(accountHome: settings.accountHome)
         self.scheduleRefreshTimer()
@@ -251,11 +272,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         oldRefresh?.cancel()
         refreshTask = nil
         refreshID = nil
+        panelController.accountSwitchEnabled = false
         panelController.resetBusy = true
         resetTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 self.resetTask = nil
+                self.panelController.accountSwitchEnabled = true
                 self.panelController.resetBusy = false
                 self.updateResetRecovery()
                 self.refresh()

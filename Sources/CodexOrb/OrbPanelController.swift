@@ -35,8 +35,15 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     var onRefresh: (() -> Void)?
     var onSettings: (() -> Void)?
     var onQuit: (() -> Void)?
+    var onAccountSelected: ((String) -> Void)?
     var onConsumeReset: ((String?) -> Void)?
     var onDiscardDamagedReset: (() -> Void)?
+    var accountSwitchEnabled = true {
+        didSet {
+            guard oldValue != self.accountSwitchEnabled else { return }
+            self.accountPopover?.close()
+        }
+    }
     var resetBusy = false { didSet { refreshResetContent() } }
     var resetRecoveryAvailable = false { didSet { refreshResetContent() } }
     var resetRecoveryDamaged = false { didSet { refreshResetContent() } }
@@ -52,6 +59,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private let defaults: UserDefaults
     private var capsuleScale: CGFloat
     private var accountInfo: AccountBadgeInfo?
+    private var accountChoices: [AccountBadgeInfo] = []
     private var resizeStartFrame: CGRect?
     private var resizeEdge: CapsuleGeometry.Edge = []
     private enum DetailKind { case resets, quota, tokens }
@@ -139,17 +147,23 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.panel.close()
     }
 
-    func updateAccount(_ account: CodexAccount?) {
-        let next = account.map { AccountBadgeInfo(email: $0.email, workspace: $0.workspace) }
-        guard self.accountInfo != next else {
+    func updateAccounts(_ accounts: [CodexAccount], selected: CodexAccount?) {
+        let choices = accounts.map { AccountBadgeInfo(account: $0) }
+        let next = selected.map { AccountBadgeInfo(account: $0) }
+        guard self.accountInfo != next || self.accountChoices != choices else {
             self.positionAccountBadge()
             return
         }
         self.accountInfo = next
+        self.accountChoices = choices
         self.accountPopover?.close()
         self.accountBadgeView.account = next
         self.accountBadgePanel.invalidateCursorRects(for: self.accountBadgeView)
         self.positionAccountBadge()
+    }
+
+    func updateAccount(_ account: CodexAccount?) {
+        self.updateAccounts(account.map { [$0] } ?? [], selected: account)
     }
 
     func update(_ state: OrbDisplayState) {
@@ -289,7 +303,14 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
-        let content = AccountDetailsView(account: accountInfo)
+        let content = AccountDetailsView(
+            account: accountInfo,
+            accounts: self.accountChoices,
+            canSwitch: self.accountSwitchEnabled)
+        { [weak self, weak popover] identityKey in
+            popover?.performClose(nil)
+            self?.onAccountSelected?(identityKey)
+        }
         let controller = NSViewController()
         controller.view = content
         popover.contentViewController = controller

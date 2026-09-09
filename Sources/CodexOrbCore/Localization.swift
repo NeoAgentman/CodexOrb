@@ -124,6 +124,7 @@ public enum L10n {
         "CodexOrb 设置": "CodexOrb Settings",
         "当前显示：": "Current account: ",
         "当前账号": "Current account",
+        "切换账号": "Switch account",
         "账号类型：{0}": "Account type: {0}",
         "未登录或账号不可用": "Not signed in or account unavailable",
         "暂无 CodexOrb 管理的账号": "No CodexOrb-managed accounts",
