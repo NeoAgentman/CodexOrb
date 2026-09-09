@@ -92,8 +92,6 @@ public enum L10n {
         "额度刷新失败，请恢复操作以重新查询。": "Quota refresh failed. Recover the operation to read it again.",
         "上次重置操作尚待确认，请使用“恢复上次重置操作”，不要重复消费。": "The previous reset needs verification. Use Recover previous reset instead of redeeming again.",
         "无法完成重置操作，请检查账号或稍后重试。": "Could not complete the reset. Check the account or try again later.",
-        "Codex：未安装，请安装 Codex CLI 或 Codex App": "Codex: not installed. Install Codex CLI or Codex App.",
-        "Codex：使用本机安装，兼容性在连接时检查": "Codex: local installation; compatibility checked on connection.",
 
         "额度详情": "Quota details",
         "全局重置预测": "Global reset forecast",
