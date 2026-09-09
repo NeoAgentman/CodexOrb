@@ -69,7 +69,33 @@ final class AccountBadgeView: NSView {
     }
     var onActivate: (() -> Void)?
 
+    var isPopoverShown = false { didSet { self.needsDisplay = true } }
+    private var isHovered = false
     private var isPressed = false
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        self.trackingAreas.forEach { self.removeTrackingArea($0) }
+        self.addTrackingArea(NSTrackingArea(rect: .zero,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        self.isHovered = true
+        self.needsDisplay = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        self.isHovered = false
+        self.isPressed = false
+        self.needsDisplay = true
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        guard self.account != nil else { return false }
+        self.onActivate?()
+        return true
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -111,39 +137,9 @@ final class AccountBadgeView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard let account = self.account else { return }
-        let rect = self.bounds.insetBy(dx: 2.5, dy: 2.5)
-        let radius = rect.height / 2
-        let colors = CapsuleSurfaceColors.resolved(for: self.effectiveAppearance)
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
-        colors.drawBackground(in: rect, cornerRadius: radius, context: context)
-
-        let accentRing = rect.insetBy(dx: 3.75, dy: 3.75)
-        context.saveGState()
-        context.setLineCap(.round)
-        context.setLineWidth(1.15)
-        context.setStrokeColor(
-            NSColor.controlAccentColor
-                .withAlphaComponent(self.isPressed ? 0.68 : 0.50)
-                .cgColor)
-        context.strokeEllipse(in: accentRing)
-        context.restoreGState()
-
-        if self.isPressed {
-            let path = NSBezierPath(roundedRect: rect.insetBy(dx: 1.5, dy: 1.5), xRadius: radius - 1.5, yRadius: radius - 1.5)
-            NSColor.controlAccentColor.withAlphaComponent(0.14).setFill()
-            path.fill()
-        }
-
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-        let fontSize = min(15, max(10, rect.height * 0.44))
-        (account.initial as NSString).draw(
-            in: rect.offsetBy(dx: 0, dy: -fontSize * 0.34),
-            withAttributes: [
-                .font: NSFont.systemFont(ofSize: fontSize, weight: .semibold),
-                .foregroundColor: colors.primaryText,
-                .paragraphStyle: paragraph,
-            ])
+        let rect = self.bounds.insetBy(dx: self.isPressed ? 3 : 2.5, dy: self.isPressed ? 3 : 2.5)
+        AccountAvatar.draw(initial: account.initial, in: rect, appearance: self.effectiveAppearance,
+                           emphasized: self.isPopoverShown || self.isPressed, hovered: self.isHovered)
     }
 
     private func updateAccessibility() {
@@ -158,122 +154,79 @@ final class AccountBadgePanel: NSPanel {
 }
 
 @MainActor
+private enum AccountAvatar {
+    static func draw(initial: String, in rect: NSRect, appearance: NSAppearance,
+                     emphasized: Bool = false, hovered: Bool = false) {
+        let colors = CapsuleSurfaceColors.resolved(for: appearance)
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        colors.drawBackground(in: rect, cornerRadius: rect.height / 2, context: context)
+        let outline = NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5))
+        if emphasized || hovered {
+            (emphasized ? NSColor.controlAccentColor.withAlphaComponent(0.10)
+                        : NSColor.labelColor.withAlphaComponent(0.04)).setFill()
+            outline.fill()
+        }
+        colors.primaryText.withAlphaComponent(0.12).setStroke()
+        outline.lineWidth = 0.5
+        outline.stroke()
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: min(15, rect.height * 0.43), weight: .medium),
+            .foregroundColor: colors.primaryText,
+        ]
+        let text = initial as NSString
+        let size = text.size(withAttributes: attributes)
+        text.draw(at: NSPoint(x: rect.midX - size.width / 2, y: rect.midY - size.height / 2),
+                  withAttributes: attributes)
+    }
+}
+
+@MainActor
 final class AccountDetailsView: NSView {
-    private static let cardWidth: CGFloat = 300
-    private static let horizontalPadding: CGFloat = 16
-    private static let rowHeight: CGFloat = 28
+    private static let cardWidth: CGFloat = 288
     private let currentAccount: AccountBadgeInfo
     private let accounts: [AccountBadgeInfo]
     private let canSwitch: Bool
     private let onSelect: (String) -> Void
 
-    init(
-        account: AccountBadgeInfo,
-        accounts: [AccountBadgeInfo] = [],
-        canSwitch: Bool = true,
-        onSelect: @escaping (String) -> Void = { _ in })
-    {
+    init(account: AccountBadgeInfo, accounts: [AccountBadgeInfo] = [], canSwitch: Bool = true,
+         onSelect: @escaping (String) -> Void = { _ in }) {
         self.currentAccount = account
-        self.accounts = accounts
+        self.accounts = accounts.count > 1 ? accounts : [account]
         self.canSwitch = canSwitch
         self.onSelect = onSelect
-        let height: CGFloat
-        if accounts.count > 1 {
-            let itemHeights: CGFloat = 18 + 24 + 16 + 1 + 16 + CGFloat(accounts.count) * Self.rowHeight
-            let gaps = CGFloat(accounts.count + 4) * 5
-            height = 28 + itemHeights + gaps
-        } else {
-            height = 96
-        }
+        let height = 48 + CGFloat(self.accounts.count) * 46 + CGFloat(self.accounts.count - 1) * 4
         super.init(frame: NSRect(x: 0, y: 0, width: Self.cardWidth, height: height))
         self.setAccessibilityElement(true)
         self.setAccessibilityRole(.group)
         self.setAccessibilityLabel(L10n.text("当前账号"))
         self.setAccessibilityValue(account.label)
-
         self.buildContent()
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override var isFlipped: Bool { true }
+    override var acceptsFirstResponder: Bool { true }
+    var onClose: (() -> Void)?
+    override func cancelOperation(_ sender: Any?) { self.onClose?() }
 
     private func buildContent() {
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 5
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        self.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: self.leadingAnchor, constant: Self.horizontalPadding),
-            stack.trailingAnchor.constraint(equalTo: self.trailingAnchor, constant: -Self.horizontalPadding),
-            stack.topAnchor.constraint(equalTo: self.topAnchor, constant: 14),
-            stack.bottomAnchor.constraint(equalTo: self.bottomAnchor, constant: -14),
-        ])
-
-        let title = self.label(
-            L10n.text("当前账号"),
-            height: 18,
-            font: .systemFont(ofSize: 11, weight: .semibold),
-            color: .secondaryLabelColor)
-        stack.addArrangedSubview(title)
-
-        let email = self.label(
-            self.currentAccount.email,
-            height: 24,
-            font: .systemFont(ofSize: 14, weight: .medium),
-            color: .labelColor)
-        email.lineBreakMode = .byTruncatingMiddle
-        stack.addArrangedSubview(email)
-
-        let workspace = self.label(
-            L10n.text("账号类型：\(self.currentAccount.workspace)"),
-            height: 16,
-            font: .systemFont(ofSize: 11, weight: .regular),
-            color: .secondaryLabelColor)
-        stack.addArrangedSubview(workspace)
-
-        guard self.accounts.count > 1 else { return }
-        let separator = NSBox()
-        separator.boxType = .separator
-        separator.translatesAutoresizingMaskIntoConstraints = false
-        separator.widthAnchor.constraint(equalToConstant: Self.cardWidth - 2 * Self.horizontalPadding).isActive = true
-        separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
-        stack.addArrangedSubview(separator)
-
-        let switchTitle = self.label(
-            L10n.text("切换账号"),
-            height: 16,
-            font: .systemFont(ofSize: 11, weight: .semibold),
-            color: .secondaryLabelColor)
-        stack.addArrangedSubview(switchTitle)
-
-        for account in self.accounts {
-            let row = AccountRowButton(
-                account: account,
+        let multiple = self.accounts.count > 1
+        let title = NSTextField(labelWithString: L10n.text(multiple ? "切换账号" : "当前账号"))
+        title.font = .systemFont(ofSize: 12, weight: .semibold)
+        title.textColor = .secondaryLabelColor
+        title.frame = NSRect(x: 16, y: 13, width: 256, height: 17)
+        self.addSubview(title)
+        for (index, account) in self.accounts.enumerated() {
+            let row = AccountRowButton(account: account,
                 selected: account.identityKey == self.currentAccount.identityKey,
-                enabled: self.canSwitch)
+                enabled: self.canSwitch, multiple: multiple)
+            row.frame = NSRect(x: 12, y: 36 + CGFloat(index) * 50, width: 264, height: 46)
             row.target = self
             row.action = #selector(self.accountRowClicked(_:))
-            row.translatesAutoresizingMaskIntoConstraints = false
-            row.widthAnchor.constraint(equalToConstant: Self.cardWidth - 2 * Self.horizontalPadding).isActive = true
-            row.heightAnchor.constraint(equalToConstant: Self.rowHeight).isActive = true
-            stack.addArrangedSubview(row)
+            self.addSubview(row)
         }
-    }
-
-    private func label(_ text: String, height: CGFloat, font: NSFont, color: NSColor) -> NSTextField {
-        let result = NSTextField(labelWithString: text)
-        result.font = font
-        result.textColor = color
-        result.usesSingleLineMode = true
-        result.alignment = .left
-        result.translatesAutoresizingMaskIntoConstraints = false
-        result.widthAnchor.constraint(equalToConstant: Self.cardWidth - 2 * Self.horizontalPadding).isActive = true
-        result.heightAnchor.constraint(equalToConstant: height).isActive = true
-        return result
     }
 
     @objc private func accountRowClicked(_ sender: Any?) {
@@ -284,34 +237,73 @@ final class AccountDetailsView: NSView {
 
     private final class AccountRowButton: NSButton {
         let identityKey: String
+        private let account: AccountBadgeInfo
+        private let selected: Bool
+        private let multiple: Bool
+        private var hovered = false
 
-        init(account: AccountBadgeInfo, selected: Bool, enabled: Bool) {
+        init(account: AccountBadgeInfo, selected: Bool, enabled: Bool, multiple: Bool) {
             self.identityKey = account.identityKey
+            self.account = account
+            self.selected = selected
+            self.multiple = multiple
             super.init(frame: .zero)
             self.title = account.label
-            self.font = .systemFont(ofSize: 12, weight: selected ? .medium : .regular)
-            self.alignment = .left
             self.isBordered = false
-            self.bezelStyle = .inline
             self.setButtonType(.momentaryPushIn)
-            self.contentTintColor = selected ? .labelColor : .secondaryLabelColor
-            self.image = selected
-                ? NSImage(systemSymbolName: "checkmark", accessibilityDescription: L10n.text("当前账号"))
-                : nil
-            self.imagePosition = .imageLeading
-            self.imageScaling = .scaleProportionallyDown
             self.isEnabled = enabled
-            self.setAccessibilityElement(true)
-            self.setAccessibilityRole(.button)
             self.setAccessibilityLabel(account.label)
             self.setAccessibilityValue(selected ? L10n.text("当前账号") : "")
-            self.cell?.lineBreakMode = .byTruncatingTail
-            self.cell?.usesSingleLineMode = true
         }
 
         @available(*, unavailable)
-        required init?(coder: NSCoder) {
-            fatalError("init(coder:) has not been implemented")
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+        override var isFlipped: Bool { true }
+
+        override func updateTrackingAreas() {
+            super.updateTrackingAreas()
+            self.trackingAreas.forEach { self.removeTrackingArea($0) }
+            self.addTrackingArea(NSTrackingArea(rect: .zero,
+                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+        }
+        override func mouseEntered(with event: NSEvent) { self.hovered = true; self.needsDisplay = true }
+        override func mouseExited(with event: NSEvent) { self.hovered = false; self.needsDisplay = true }
+
+        override func draw(_ dirtyRect: NSRect) {
+            let active = self.isEnabled && (self.hovered || self.isHighlighted)
+            if self.multiple && (self.selected || active) {
+                let color = self.selected ? NSColor.controlAccentColor : NSColor.labelColor
+                color.withAlphaComponent(self.isHighlighted ? 0.14 : (active ? 0.10 : 0.06)).setFill()
+                NSBezierPath(roundedRect: self.bounds, xRadius: 9, yRadius: 9).fill()
+            }
+            AccountAvatar.draw(initial: self.account.initial, in: NSRect(x: 8, y: 9, width: 28, height: 28),
+                               appearance: self.effectiveAppearance)
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineBreakMode = .byTruncatingMiddle
+            let opacity: CGFloat = self.isEnabled ? 1 : 0.5
+            (self.account.email as NSString).draw(in: NSRect(x: 44, y: 7, width: 190, height: 17), withAttributes: [
+                .font: NSFont.systemFont(ofSize: 12, weight: self.selected ? .medium : .regular),
+                .foregroundColor: NSColor.labelColor.withAlphaComponent(opacity), .paragraphStyle: paragraph])
+            (self.account.workspace as NSString).draw(in: NSRect(x: 44, y: 25, width: 190, height: 14), withAttributes: [
+                .font: NSFont.systemFont(ofSize: 10),
+                .foregroundColor: (self.isEnabled ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor), .paragraphStyle: paragraph])
+            if self.selected && self.multiple {
+                NSColor.controlAccentColor.withAlphaComponent(opacity).setStroke()
+                let mark = NSBezierPath()
+                mark.move(to: NSPoint(x: 243, y: 23))
+                mark.line(to: NSPoint(x: 247, y: 27))
+                mark.line(to: NSPoint(x: 254, y: 19))
+                mark.lineWidth = 1.6
+                mark.lineCapStyle = .round
+                mark.lineJoinStyle = .round
+                mark.stroke()
+            }
+            if self.window?.firstResponder === self {
+                NSColor.keyboardFocusIndicatorColor.setStroke()
+                let focus = NSBezierPath(roundedRect: self.bounds.insetBy(dx: 1, dy: 1), xRadius: 8, yRadius: 8)
+                focus.lineWidth = 2
+                focus.stroke()
+            }
         }
     }
 }

@@ -313,11 +313,13 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
             popover?.performClose(nil)
             self?.onAccountSelected?(identityKey)
         }
+        content.onClose = { [weak popover] in popover?.performClose(nil) }
         let controller = NSViewController()
         controller.view = content
         popover.contentViewController = controller
         popover.contentSize = content.frame.size
         self.accountPopover = popover
+        self.accountBadgeView.isPopoverShown = true
 
         let screen = self.panel.screen ?? NSScreen.main
         let visible = screen?.visibleFrame ?? self.panel.frame
@@ -404,6 +406,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         if let closed = notification.object as? NSPopover, closed === self.accountPopover {
             self.accountPopover = nil
+            self.accountBadgeView.isPopoverShown = false
             return
         }
         guard let closed = notification.object as? NSPopover, closed === self.resetPopover else { return }
