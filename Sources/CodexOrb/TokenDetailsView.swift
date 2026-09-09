@@ -131,7 +131,9 @@ final class TokenDetailsView: NSView {
     private static func cacheHitRateSummary(for today: OpenTokenDailyUsage?) -> String {
         guard let today else { return L10n.text("暂不可用") }
         let cacheRead = Self.compactTokenCount(today.cacheReadTokens)
-        guard let percentage = Self.percentage(today.cacheReadTokens, of: today.combinedTokens) else {
+        let rawTotal = today.inputTokens.addingReportingOverflow(today.cacheReadTokens)
+        guard !rawTotal.overflow,
+              let percentage = Self.percentage(today.cacheReadTokens, of: rawTotal.partialValue) else {
             return "\(cacheRead) · —"
         }
         return "\(cacheRead) · \(Self.formatPercentage(percentage))"

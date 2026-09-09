@@ -214,17 +214,18 @@ enum CodexOrbCoreChecks {
         let json = """
         {
           "rows": [
-            {"date":"2026-08-30","tool":"codex","model":"gpt-5.6-sol","normalized":720292,"cache_read":15750912},
-            {"date":"2026-08-30","tool":"hermes","model":"gpt-5.6-sol","normalized":8,"cache_read":2},
-            {"date":"2026-08-30","tool":"hermes","model":"gpt-5.6-luna","normalized":141297,"cache_read":1414144},
-            {"date":"2026-08-30","tool":"workbuddy","model":"glm-5.3-flash","normalized":1448969,"cache_read":18737792},
-            {"date":"2026-08-29","tool":"codex","model":"gpt-5.6-sol","normalized":999,"cache_read":999}
+            {"date":"2026-08-30","tool":"codex","model":"gpt-5.6-sol","input":600000,"normalized":720292,"cache_read":15750912},
+            {"date":"2026-08-30","tool":"hermes","model":"gpt-5.6-sol","input":6,"normalized":8,"cache_read":2},
+            {"date":"2026-08-30","tool":"hermes","model":"gpt-5.6-luna","input":100000,"normalized":141297,"cache_read":1414144},
+            {"date":"2026-08-30","tool":"workbuddy","model":"glm-5.3-flash","input":1000000,"normalized":1448969,"cache_read":18737792},
+            {"date":"2026-08-29","tool":"codex","model":"gpt-5.6-sol","input":999,"normalized":999,"cache_read":999}
           ],
           "sessions": []
         }
         """
         let usage = try OpenTokenUsageParser.parse(Data(json.utf8), date: "2026-08-30")
         try self.expect(usage.totalTokens == 2_310_566, "all-tool daily total")
+        try self.expect(usage.inputTokens == 1_700_006, "all-tool raw input total")
         try self.expect(usage.cacheReadTokens == 35_902_850, "all-tool cache total")
         try self.expect(usage.combinedTokens == 38_213_416, "all-tool total including cache")
         try self.expect(
@@ -267,7 +268,7 @@ enum CodexOrbCoreChecks {
         let script = """
         #!/bin/sh
         test "$*" = "preview --since 2026-08-30 --json" || exit 64
-        printf '%s\n' '{"rows":[{"date":"2026-08-30","normalized":200,"cache_read":800}],"sessions":[]}'
+        printf '%s\n' '{"rows":[{"date":"2026-08-30","input":150,"normalized":200,"cache_read":800}],"sessions":[]}'
         """
         try Data(script.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)

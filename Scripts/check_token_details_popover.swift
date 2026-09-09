@@ -24,6 +24,7 @@ struct TokenDetailsPopoverChecks {
             date: "2026-09-08",
             totalTokens: 293_700,
             cacheReadTokens: 7_651_300,
+            inputTokens: 50_000,
             toolUsages: [
                 OpenTokenToolUsage(tool: "codex", totalTokens: 1_000, cacheReadTokens: 2_000),
                 OpenTokenToolUsage(tool: "hermes", totalTokens: 2_000, cacheReadTokens: 3_000),
@@ -61,7 +62,7 @@ struct TokenDetailsPopoverChecks {
         let percentageLabels = labels.filter { $0.contains("%") }
         precondition(percentageLabels.count == 1, "Only the cache hit rate percentage should be shown")
         let expectedCacheAmount = AppLanguage.load() == .chinese ? "765.1万" : "7.7M"
-        precondition(percentageLabels.contains { $0.contains(expectedCacheAmount) && $0.contains("96.3%") },
+        precondition(percentageLabels.contains { $0.contains(expectedCacheAmount) && $0.contains("99.4%") },
                      "Cache read amount and hit rate should be shown together")
         let expectedTotalAmount = AppLanguage.load() == .chinese ? "794.5万" : "7.9M"
         precondition(labels.contains(expectedTotalAmount),

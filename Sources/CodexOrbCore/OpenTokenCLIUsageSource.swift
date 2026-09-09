@@ -44,6 +44,7 @@ public struct OpenTokenModelUsage: Equatable, Sendable {
 public struct OpenTokenDailyUsage: Equatable, Sendable {
     public let date: String
     public let totalTokens: Int64
+    public let inputTokens: Int64
     public let cacheReadTokens: Int64
     public let toolUsages: [OpenTokenToolUsage]
     public let modelUsages: [OpenTokenModelUsage]
@@ -52,11 +53,13 @@ public struct OpenTokenDailyUsage: Equatable, Sendable {
         date: String,
         totalTokens: Int64,
         cacheReadTokens: Int64,
+        inputTokens: Int64 = 0,
         toolUsages: [OpenTokenToolUsage] = [],
         modelUsages: [OpenTokenModelUsage] = [])
     {
         self.date = date
         self.totalTokens = totalTokens
+        self.inputTokens = inputTokens
         self.cacheReadTokens = cacheReadTokens
         self.toolUsages = toolUsages
         self.modelUsages = modelUsages
@@ -104,16 +107,19 @@ public enum OpenTokenUsageParser {
         }
 
         var totalTokens: Int64 = 0
+        var inputTokens: Int64 = 0
         var cacheReadTokens: Int64 = 0
         var toolTotals: [String: OpenTokenUsageTotals] = [:]
         var modelTotals: [String: OpenTokenModelTotals] = [:]
         for row in payload.rows where row.date == date {
             let totalResult = totalTokens.addingReportingOverflow(row.normalized)
+            let inputResult = inputTokens.addingReportingOverflow(row.input)
             let cacheResult = cacheReadTokens.addingReportingOverflow(row.cacheRead)
-            guard !totalResult.overflow, !cacheResult.overflow else {
+            guard !totalResult.overflow, !inputResult.overflow, !cacheResult.overflow else {
                 throw OpenTokenCLIError.totalOverflow
             }
             totalTokens = totalResult.partialValue
+            inputTokens = inputResult.partialValue
             cacheReadTokens = cacheResult.partialValue
 
             if let tool = row.tool?.trimmingCharacters(in: .whitespacesAndNewlines), !tool.isEmpty {
@@ -175,6 +181,7 @@ public enum OpenTokenUsageParser {
             date: date,
             totalTokens: totalTokens,
             cacheReadTokens: cacheReadTokens,
+            inputTokens: inputTokens,
             toolUsages: toolUsages,
             modelUsages: modelUsages)
     }
@@ -291,6 +298,7 @@ private struct OpenTokenPayload: Decodable {
 
 private struct OpenTokenRow: Decodable {
     let date: String
+    let input: Int64
     let normalized: Int64
     let cacheRead: Int64
     let tool: String?
@@ -298,6 +306,7 @@ private struct OpenTokenRow: Decodable {
 
     private enum CodingKeys: String, CodingKey {
         case date
+        case input
         case normalized
         case cacheRead = "cache_read"
         case tool
