@@ -4,6 +4,46 @@ A small native macOS floating window that displays Codex quota remaining and tod
 built with the macOS SDK. Codex quota and reset cards use a locally installed `codex app-server` and only a
 CodexOrb-managed account. OpenToken is bundled for machine-wide local token statistics.
 
+## 下载安装（macOS）
+
+1. 打开 [最新 Release](https://github.com/NeoAgentman/CodexOrb/releases/latest)，下载 `CodexOrb-<版本>-macOS-arm64.zip`。该安装包适用于 **Apple Silicon（M 系列）Mac，macOS 14 或更新版本**；不适用于 Intel Mac。直接安装不需要 Swift 或 Xcode。
+2. 双击 ZIP 解压，将 `CodexOrb.app` 拖到 Finder 的「应用程序」（`/Applications`）目录。更新时先从悬浮球右键菜单退出旧版，再替换应用；账号和设置保存在用户资料目录中。
+3. 双击「应用程序」中的 CodexOrb。应用以桌面悬浮球运行，**不会显示 Dock 图标或普通主窗口**。
+
+### 首次打开：未签名应用的放行
+
+发布包只有本地 ad-hoc 签名，**没有 Apple Developer ID 签名，也未经 Apple 公证**。首次打开可能提示「无法验证开发者」或「Apple 无法检查其是否包含恶意软件」。确认下载自本仓库 Release 后：
+
+1. 尝试打开一次，在拦截提示中选择「完成」或「取消」。
+2. 打开「系统设置 → 隐私与安全性」，向下找到 CodexOrb 被阻止的提示，点击「仍要打开」（Open Anyway）。
+3. 按系统要求输入 Mac 登录密码或使用 Touch ID，再确认「打开」。之后可正常双击启动。
+
+以上流程参见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
+
+若仍因下载隔离提示「已损坏，无法打开」，先重新下载并核对 Release 中的 `SHA256SUMS.txt`。在终端切换到下载文件所在目录运行（将文件名换成实际版本）：
+
+```sh
+shasum -a 256 CodexOrb-0.1.0-macOS-arm64.zip
+```
+
+确认哈希与 Release 一致、应用已放到「应用程序」且信任来源后，仅移除此应用的下载隔离标记，再启动：
+
+```sh
+xattr -dr com.apple.quarantine "/Applications/CodexOrb.app"
+open "/Applications/CodexOrb.app"
+```
+
+如果提示没有权限，可在确认上述路径后为 `xattr` 命令加上 `sudo`，按提示输入 Mac 登录密码（输入时不会显示字符）。无需关闭系统 Gatekeeper 或 SIP。若 macOS 明确报告检测到恶意软件，请不要使用此方法绕过。
+
+### 首次配置与正常使用
+
+1. 确保本机已安装 Codex CLI，或带有兼容 Codex runtime 的 Codex/ChatGPT 桌面应用。CodexOrb 会自动查找并检查兼容性；Codex runtime 不包含在安装包内。
+2. 右键悬浮球，打开「设置 / Settings…」，点击「添加 Codex 账号」，在浏览器完成登录授权。
+3. 在「胶囊显示账号」中选择刚添加的账号并保存，等待配额和用量刷新。即使系统中的 Codex 已登录，也需要添加 CodexOrb 自己管理的账号；没有选中账号时悬浮球显示为空。
+4. 悬停可展开，拖动可移动，点击配额环查看限额详情，点击 token 数查看用量明细。右键菜单可刷新、打开设置或退出；需要随系统启动时在设置中开启「开机启动」。
+
+配额查询需要联网。OpenToken 已随包附带，token 统计来自本机 AI 工具日志，代表整台机器的用量，不是所选账号的单独用量。若配额为空或出现橙色状态点，检查网络、所选账号和 Codex runtime；缺少本地日志时可能没有 token 用量数据。
+
 ## Requirements
 
 - macOS 14 or newer
@@ -72,8 +112,8 @@ repository owner's explicit request; its redistribution terms remain unverified.
 `swift run CodexOrbCoreChecks --live-gui-environment` is an **opt-in live quota read** using app-server;
 it never consumes a reset. Normal checks use only local fake accounts and a fake protocol peer.
 
-The bundle is ad-hoc signed for local use. Distribution to other Macs requires an appropriate Developer ID signing
-and notarization workflow.
+The bundle is ad-hoc signed, without Developer ID signing or Apple notarization. Downloaded release builds
+require the first-launch steps above. Developer ID signing and notarization would remove the need for this manual approval.
 
 The app icon source is `Resources/AppIcon.png`. The build script generates the complete macOS `.icns` size set.
 
