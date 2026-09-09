@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panelController.updateDefaultExpansion(
             self.settings.capsuleExpandedByDefault,
             animated: false)
+        self.panelController.updateAccount(self.selectedManagedAccount)
         self.panelController.show()
         self.refresh()
         self.scheduleRefreshTimer()
@@ -63,7 +64,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refresh() {
         self.updateResetRecovery()
         guard self.refreshID == nil, self.resetTask == nil else { return }
-        guard let account = self.selectedManagedAccount else {
+        let account = self.selectedManagedAccount
+        self.panelController.updateAccount(account)
+        guard let account else {
             self.lastUsage = nil
             self.panelController.update(.empty)
             return
@@ -167,6 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.settings = settings
         settings.save()
         self.panelController.reloadLanguage()
+        self.panelController.updateAccount(self.selectedManagedAccount)
         self.panelController.updateDefaultExpansion(settings.capsuleExpandedByDefault)
         self.usageSource = CombinedUsageSource(accountHome: settings.accountHome)
         self.scheduleRefreshTimer()

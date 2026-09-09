@@ -243,7 +243,7 @@ final class OrbView: NSView, NSMenuDelegate {
         let colors = self.colors
         let capsule = self.bounds.insetBy(dx: 3, dy: 3)
         let radius = capsule.height / 2
-        self.drawGlassBackground(in: capsule, cornerRadius: radius, colors: colors, context: context)
+        colors.drawBackground(in: capsule, cornerRadius: radius, context: context)
 
         let usage = self.displayState.usage
         let gauge = self.ringGauge
@@ -356,7 +356,7 @@ final class OrbView: NSView, NSMenuDelegate {
         return self.tokenConsumptionRect.contains(point)
     }
 
-    private func drawResetStack(colors: OrbColors) {
+    private func drawResetStack(colors: CapsuleSurfaceColors) {
         let credits = self.displayState.usage?.resetCredits
         let count = credits?.availableCount ?? 0
         let front = CGRect(x: self.resetCardsRect.minX + 3, y: 7, width: 34, height: 38)
@@ -419,7 +419,7 @@ final class OrbView: NSView, NSMenuDelegate {
         tinted.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
     }
 
-    private func resetExpirationColor(_ expiration: Date, now: Date, colors: OrbColors) -> NSColor {
+    private func resetExpirationColor(_ expiration: Date, now: Date, colors: CapsuleSurfaceColors) -> NSColor {
         expiration.timeIntervalSince(now) < 7 * 86_400 ? .systemOrange : colors.primaryText
     }
 
@@ -486,39 +486,6 @@ final class OrbView: NSView, NSMenuDelegate {
         let end = start - (2 * CGFloat.pi * remaining / 100)
         context.setStrokeColor(color.cgColor)
         context.addArc(center: center, radius: radius, startAngle: start, endAngle: end, clockwise: true)
-        context.strokePath()
-    }
-
-    private func drawGlassBackground(
-        in rect: CGRect,
-        cornerRadius: CGFloat,
-        colors: OrbColors,
-        context: CGContext)
-    {
-        let path = CGPath(roundedRect: rect, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
-        guard let gradient = CGGradient(
-            colorsSpace: CGColorSpaceCreateDeviceRGB(),
-            colors: [colors.backgroundTop.cgColor, colors.backgroundBottom.cgColor] as CFArray,
-            locations: [0, 1])
-        else { return }
-
-        context.saveGState()
-        context.addPath(path)
-        context.clip()
-        context.drawLinearGradient(
-            gradient,
-            start: CGPoint(x: rect.minX, y: rect.maxY),
-            end: CGPoint(x: rect.maxX, y: rect.minY),
-            options: [])
-        context.restoreGState()
-
-        context.setStrokeColor(colors.highlight.cgColor)
-        context.setLineWidth(1)
-        context.addPath(CGPath(
-            roundedRect: rect.insetBy(dx: 1.5, dy: 1.5),
-            cornerWidth: max(0, cornerRadius - 1.5),
-            cornerHeight: max(0, cornerRadius - 1.5),
-            transform: nil))
         context.strokePath()
     }
 
@@ -605,29 +572,7 @@ final class OrbView: NSView, NSMenuDelegate {
         }
     }
 
-    private var colors: OrbColors {
-        let dark = self.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        return OrbColors(
-            backgroundTop: dark
-                ? NSColor(calibratedRed: 0.12, green: 0.14, blue: 0.18, alpha: 1)
-                : NSColor.white.withAlphaComponent(1),
-            backgroundBottom: dark
-                ? NSColor(calibratedRed: 0.05, green: 0.06, blue: 0.09, alpha: 1)
-                : NSColor(calibratedRed: 0.91, green: 0.94, blue: 0.98, alpha: 1),
-            border: dark ? NSColor.white.withAlphaComponent(0.22) : NSColor.white.withAlphaComponent(0.86),
-            highlight: dark ? NSColor.white.withAlphaComponent(0.14) : NSColor.white.withAlphaComponent(0.72),
-            track: dark ? NSColor.white.withAlphaComponent(0.13) : NSColor.black.withAlphaComponent(0.09),
-            primaryText: dark ? .white : .labelColor,
-            secondaryText: dark ? NSColor.white.withAlphaComponent(0.65) : .secondaryLabelColor)
+    private var colors: CapsuleSurfaceColors {
+        CapsuleSurfaceColors.resolved(for: self.effectiveAppearance)
     }
-}
-
-private struct OrbColors {
-    let backgroundTop: NSColor
-    let backgroundBottom: NSColor
-    let border: NSColor
-    let highlight: NSColor
-    let track: NSColor
-    let primaryText: NSColor
-    let secondaryText: NSColor
 }
