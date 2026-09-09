@@ -35,6 +35,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     var onRefresh: (() -> Void)?
     var onSettings: (() -> Void)?
     var onQuit: (() -> Void)?
+    var onAccountListRefresh: (() -> Void)?
     var onAccountSelected: ((String) -> Void)?
     var onConsumeReset: ((String?) -> Void)?
     var onDiscardDamagedReset: (() -> Void)?
@@ -295,6 +296,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     private func showAccountDetails() {
+        self.onAccountListRefresh?()
         guard let accountInfo else { return }
         self.resetPopover?.close()
         self.accountPopover?.close()

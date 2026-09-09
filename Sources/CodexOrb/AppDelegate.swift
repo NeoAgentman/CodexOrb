@@ -28,6 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panelController.onSettings = { [weak self] in
             self?.showSettings()
         }
+        self.panelController.onAccountListRefresh = { [weak self] in
+            self?.updateAccountBadge()
+        }
         self.panelController.onAccountSelected = { [weak self] identityKey in
             self?.selectAccount(identityKey: identityKey)
         }
