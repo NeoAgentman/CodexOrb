@@ -51,8 +51,7 @@ public enum CodexUsageParser {
 
         return CodexUsage(
             provider: payload.provider,
-            session: usage.primary?.quotaWindow,
-            weekly: usage.secondary?.quotaWindow,
+            windows: [usage.primary?.quotaWindow, usage.secondary?.quotaWindow].compactMap { $0 },
             resetCredits: usage.codexResetCredits,
             updatedAt: usage.updatedAt)
     }
@@ -96,10 +95,14 @@ private struct WindowPayload: Decodable {
     let isSyntheticPlaceholder: Bool?
 
     var quotaWindow: CodexQuotaWindow? {
-        guard self.isSyntheticPlaceholder != true, self.usedPercent.isFinite else { return nil }
+        guard self.isSyntheticPlaceholder != true,
+              self.usedPercent.isFinite,
+              let windowMinutes = self.windowMinutes,
+              let kind = CodexQuotaWindow.Kind(windowMinutes: windowMinutes)
+        else { return nil }
         return CodexQuotaWindow(
+            kind: kind,
             usedPercent: self.usedPercent,
-            windowMinutes: self.windowMinutes,
             resetsAt: self.resetsAt,
             resetDescription: self.resetDescription)
     }

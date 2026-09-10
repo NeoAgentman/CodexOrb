@@ -68,7 +68,7 @@ public struct CodexBarCLIUsageSource: CodexUsageSourcing {
             let current = try CodexAccountStore.read(home: URL(fileURLWithPath: account.home))
             guard current.identityKey == account.identityKey else { throw CodexAccountError.invalidAccount }
         }
-        return CodexUsage(provider: "codex", session: usage.session, weekly: usage.weekly,
+        return CodexUsage(provider: "codex", windows: usage.windows,
                           resetCredits: usage.resetCredits,
                           updatedAt: usage.updatedAt)
     }

@@ -42,14 +42,14 @@ enum AccountChecks {
         #!/bin/sh
         test "$*" = "usage --provider codex --source oauth --format json --json-only" || exit 64
         test "$CODEX_HOME" = "$EXPECTED_HOME" || exit 65
-        printf '%s' '{"provider":"codex","usage":{"accountEmail":"same@example.test","primary":{"usedPercent":20},"secondary":{"usedPercent":30,"windowMinutes":10080},"updatedAt":"2026-09-06T00:00:00Z"}}'
+        printf '%s' '{"provider":"codex","usage":{"accountEmail":"same@example.test","primary":{"usedPercent":20,"windowMinutes":300},"secondary":{"usedPercent":30,"windowMinutes":10080},"updatedAt":"2026-09-06T00:00:00Z"}}'
         """
         try Data(script.utf8).write(to: executable)
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
         for account in accounts {
             let usage = try await CodexBarCLIUsageSource(accountHome: account.home, bundledExecutableDirectory: root,
                 environment: ["EXPECTED_HOME": account.home, "CODEX_HOME": "/wrong"], timeout: 2).fetch()
-            try expect(usage.weekly?.usedPercent == 30, "explicit home and scoped CLI")
+            try expect(usage.weeklyQuota?.usedPercent == 30, "explicit home and scoped CLI")
         }
         try expect(try Data(contentsOf: store.nativeHome.appendingPathComponent("auth.json")) == nativeAuth,
                    "account selection does not overwrite native login")

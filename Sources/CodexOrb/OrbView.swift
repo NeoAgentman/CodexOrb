@@ -268,28 +268,34 @@ final class OrbView: NSView, NSMenuDelegate {
         self.drawInteractionHighlight(in: context)
 
         let usage = self.displayState.usage
+        let ringQuota = usage?.ringQuota
         let gauge = self.ringGauge
         self.drawRing(
             context: context,
             rect: gauge,
-            remaining: usage?.ringQuota?.remainingPercent,
+            remaining: ringQuota?.remainingPercent,
             width: 3.5,
-            color: self.meterColor(for: usage?.ringQuota?.remainingPercent))
+            color: self.meterColor(for: ringQuota?.remainingPercent))
         self.drawWeeklyTimeRing(context: context, rect: gauge.insetBy(dx: -3.75, dy: -3.75))
         let fiveHourRemaining = usage?.fiveHourQuota?.remainingPercent
-        self.drawText(
-            usage?.ringQuota.map { "\(Int($0.remainingPercent.rounded()))%" } ?? "—",
-            in: CGRect(x: gauge.minX, y: gauge.midY - 1,
-                       width: gauge.width, height: 14),
-            font: .monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold),
-            color: colors.primaryText,
-            alignment: .center)
-        self.drawText(
-            fiveHourRemaining.map { "\(Int($0.rounded()))%" } ?? "--",
-            in: CGRect(x: gauge.minX, y: gauge.midY - 13, width: gauge.width, height: 11),
-            font: .monospacedDigitSystemFont(ofSize: 8.5, weight: .semibold),
-            color: self.meterColor(for: fiveHourRemaining),
-            alignment: .center)
+        let showsFiveHourSecondary = fiveHourRemaining != nil && ringQuota?.kind != .fiveHour
+        if let ringQuota {
+            self.drawText(
+                "\(Int(ringQuota.remainingPercent.rounded()))%",
+                in: CGRect(x: gauge.minX, y: gauge.midY - (showsFiveHourSecondary ? 1 : 7),
+                           width: gauge.width, height: 14),
+                font: .monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold),
+                color: colors.primaryText,
+                alignment: .center)
+        }
+        if showsFiveHourSecondary, let fiveHourRemaining {
+            self.drawText(
+                "\(Int(fiveHourRemaining.rounded()))%",
+                in: CGRect(x: gauge.minX, y: gauge.midY - 13, width: gauge.width, height: 11),
+                font: .monospacedDigitSystemFont(ofSize: 8.5, weight: .semibold),
+                color: self.meterColor(for: fiveHourRemaining),
+                alignment: .center)
+        }
 
         // Content stays anchored to the right edge and is covered by the moving ring.
         context.saveGState()
@@ -506,16 +512,12 @@ final class OrbView: NSView, NSMenuDelegate {
     }
 
     private var weeklyResetDate: Date? {
-        guard let usage = self.displayState.usage else { return nil }
-        return [usage.weekly, usage.session]
-            .compactMap { $0 }
-            .first { $0.windowMinutes == 10_080 }?.resetsAt
+        self.displayState.usage?.weeklyQuota?.resetsAt
     }
 
     private func drawWeeklyTimeRing(context: CGContext, rect: CGRect) {
-        let remainingDays = self.weeklyResetDate.map {
-            min(7, max(0, $0.timeIntervalSinceNow / 86_400))
-        } ?? 0
+        guard let resetDate = self.weeklyResetDate else { return }
+        let remainingDays = min(7, max(0, resetDate.timeIntervalSinceNow / 86_400))
         let step = 2 * CGFloat.pi / 7
         let gap: CGFloat = 0.10
         let center = CGPoint(x: rect.midX, y: rect.midY)

@@ -3,6 +3,27 @@ import CodexOrbCore
 
 @MainActor
 final class QuotaDetailsView: NSView {
+    private struct QuotaSpec {
+        let kind: CodexQuotaWindow.Kind
+        let remainingTitle: String
+        let resetTitle: String
+    }
+
+    private struct DetailRow {
+        enum Kind { case remaining, reset }
+
+        let title: String
+        let quota: CodexQuotaWindow
+        let kind: Kind
+    }
+
+    private static let logicalWidth: CGFloat = 360
+    private static let displayScale: CGFloat = 0.8
+    private static let renderedWidth = QuotaDetailsView.logicalWidth * QuotaDetailsView.displayScale
+    private static let baseLogicalHeight: CGFloat = 360
+    private static let baseRowCount = 4
+    private static let rowHeight: CGFloat = 56
+
     var onClose: (() -> Void)?
     private var usage: CodexUsage?
     private var forecast: CodexResetForecast?
@@ -12,9 +33,11 @@ final class QuotaDetailsView: NSView {
     init(usage: CodexUsage?, forecast: CodexResetForecast? = nil) {
         self.usage = usage
         self.forecast = forecast
-        super.init(frame: NSRect(x: 0, y: 0, width: 288, height: 288))
-        // Scale the complete card uniformly, including labels, bars and spacing.
-        self.bounds = NSRect(x: 0, y: 0, width: 360, height: 360)
+        let rowCount = Self.detailRows(for: usage).count
+        let logicalHeight = Self.contentHeight(rowCount: rowCount)
+        super.init(frame: NSRect(x: 0, y: 0,
+                                 width: Self.renderedWidth,
+                                 height: logicalHeight * Self.displayScale))
         self.rebuild()
     }
 
@@ -47,18 +70,59 @@ final class QuotaDetailsView: NSView {
     }
 
     private func rebuild() {
+        let rows = Self.detailRows(for: self.usage)
+        let logicalHeight = Self.contentHeight(rowCount: rows.count)
+        var frame = self.frame
+        frame.size = CGSize(width: Self.renderedWidth, height: logicalHeight * Self.displayScale)
+        self.frame = frame
+        self.bounds = NSRect(x: 0, y: 0, width: Self.logicalWidth, height: logicalHeight)
         self.subviews.forEach { $0.removeFromSuperview() }
-        self.label(L10n.text("额度详情"), x: 18, y: 324, width: 324, size: 15, weight: .semibold)
-        let fiveHour = self.usage?.fiveHourQuota
-        // Identify the actual weekly window, including reversed primary/secondary slots.
-        let weekly = [self.usage?.session, self.usage?.weekly].compactMap { $0 }
-            .first { $0.windowMinutes == 10_080 }
+        self.label(L10n.text("额度详情"), x: 18, y: logicalHeight - 36,
+                   width: 324, size: 15, weight: .semibold)
         let now = Date()
-        self.quotaRow(L10n.text("5 小时剩余额度"), quota: fiveHour, y: 284)
-        self.timeRow(L10n.text("5 小时重置剩余时间"), quota: fiveHour, duration: 5 * 3600, now: now, y: 228)
-        self.quotaRow(L10n.text("周剩余额度"), quota: weekly, y: 172)
-        self.timeRow(L10n.text("周重置剩余时间"), quota: weekly, duration: 7 * 86400, now: now, y: 116)
+        var rowY = logicalHeight - 76
+        for row in rows {
+            switch row.kind {
+            case .remaining:
+                self.quotaRow(row.title, quota: row.quota, y: rowY)
+            case .reset:
+                self.timeRow(row.title, quota: row.quota, now: now, y: rowY)
+            }
+            rowY -= Self.rowHeight
+        }
         self.forecastSection()
+    }
+
+    private static func detailRows(for usage: CodexUsage?) -> [DetailRow] {
+        self.quotaSpecs().flatMap { spec -> [DetailRow] in
+            guard let quota = usage?.quota(for: spec.kind) else { return [] }
+            var rows = [DetailRow(title: spec.remainingTitle, quota: quota, kind: .remaining)]
+            if quota.resetsAt != nil {
+                rows.append(DetailRow(title: spec.resetTitle, quota: quota, kind: .reset))
+            }
+            return rows
+        }
+    }
+
+    private static func quotaSpecs() -> [QuotaSpec] {
+        [
+            QuotaSpec(
+                kind: .fiveHour,
+                remainingTitle: L10n.text("5 小时剩余额度"),
+                resetTitle: L10n.text("5 小时重置剩余时间")),
+            QuotaSpec(
+                kind: .weekly,
+                remainingTitle: L10n.text("周剩余额度"),
+                resetTitle: L10n.text("周重置剩余时间")),
+            QuotaSpec(
+                kind: .monthly,
+                remainingTitle: L10n.text("30 天剩余额度"),
+                resetTitle: L10n.text("30 天重置剩余时间")),
+        ]
+    }
+
+    private static func contentHeight(rowCount: Int) -> CGFloat {
+        Self.baseLogicalHeight + CGFloat(max(0, rowCount - Self.baseRowCount)) * Self.rowHeight
     }
 
     private func forecastSection() {
@@ -113,17 +177,19 @@ final class QuotaDetailsView: NSView {
         self.addSubview(bar)
     }
 
-    private func quotaRow(_ title: String, quota: CodexQuotaWindow?, y: CGFloat) {
-        let remaining = quota?.remainingPercent
-        let value = remaining.map { String(format: "%.1f%%", $0) } ?? L10n.text("暂不可用")
-        let color: NSColor = remaining.map { $0 <= 10 ? .systemRed : ($0 <= 25 ? .systemOrange : .systemGreen) } ?? .tertiaryLabelColor
-        self.row(title, value: value, fraction: remaining.map { $0 / 100 }, color: color, y: y)
+    private func quotaRow(_ title: String, quota: CodexQuotaWindow, y: CGFloat) {
+        let remaining = quota.remainingPercent
+        let value = String(format: "%.1f%%", remaining)
+        let color: NSColor = remaining <= 10 ? .systemRed : (remaining <= 25 ? .systemOrange : .systemGreen)
+        self.row(title, value: value, fraction: remaining / 100, color: color, y: y)
     }
 
-    private func timeRow(_ title: String, quota: CodexQuotaWindow?, duration: TimeInterval, now: Date, y: CGFloat) {
-        let seconds = quota?.resetsAt.map { max(0, $0.timeIntervalSince(now)) }
-        self.row(title, value: seconds.map(Self.countdown) ?? L10n.text("暂不可用"),
-                 fraction: seconds.map { $0 / duration }, color: .systemTeal, y: y)
+    private func timeRow(_ title: String, quota: CodexQuotaWindow, now: Date, y: CGFloat) {
+        guard let resetsAt = quota.resetsAt else { return }
+        let seconds = max(0, resetsAt.timeIntervalSince(now))
+        let duration = TimeInterval(quota.windowMinutes) * 60
+        self.row(title, value: Self.countdown(seconds),
+                 fraction: duration > 0 ? seconds / duration : nil, color: .systemTeal, y: y)
     }
 
     static func countdown(_ seconds: TimeInterval) -> String {

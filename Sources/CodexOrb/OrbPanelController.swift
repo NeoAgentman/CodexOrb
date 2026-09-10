@@ -375,6 +375,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         }
         if let content = popover.contentViewController?.view as? QuotaDetailsView {
             content.update(self.orbView.displayState.usage, forecast: self.forecast)
+            popover.contentSize = content.frame.size
             return
         }
         let content = QuotaDetailsView(usage: self.orbView.displayState.usage, forecast: self.forecast)

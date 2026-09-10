@@ -1,22 +1,49 @@
 import Foundation
 
 public struct CodexQuotaWindow: Equatable, Sendable {
+    /// The semantic kind is derived from the server-reported duration, never from
+    /// the protocol's primary/secondary slot.
+    public enum Kind: String, CaseIterable, Hashable, Sendable {
+        case fiveHour
+        case weekly
+        case monthly
+
+        public init?(windowMinutes: Int) {
+            switch windowMinutes {
+            case 300: self = .fiveHour
+            case 10_080: self = .weekly
+            case 43_200: self = .monthly
+            default: return nil
+            }
+        }
+
+        public var windowMinutes: Int {
+            switch self {
+            case .fiveHour: 300
+            case .weekly: 10_080
+            case .monthly: 43_200
+            }
+        }
+    }
+
+    public let kind: Kind
     public let usedPercent: Double
-    public let windowMinutes: Int?
     public let resetsAt: Date?
     public let resetDescription: String?
 
     public init(
+        kind: Kind,
         usedPercent: Double,
-        windowMinutes: Int?,
         resetsAt: Date?,
         resetDescription: String?)
     {
+        self.kind = kind
         self.usedPercent = usedPercent
-        self.windowMinutes = windowMinutes
         self.resetsAt = resetsAt
         self.resetDescription = resetDescription
     }
+
+    public var windowMinutes: Int { self.kind.windowMinutes }
 
     public var remainingPercent: Double {
         min(100, max(0, 100 - self.usedPercent))
@@ -60,59 +87,59 @@ public struct CodexResetCredits: Decodable, Equatable, Sendable {
 
 public struct CodexUsage: Equatable, Sendable {
     public let provider: String
-    public let session: CodexQuotaWindow?
-    public let weekly: CodexQuotaWindow?
+    public let windows: [CodexQuotaWindow]
     public let resetCredits: CodexResetCredits?
     public let todayTokens: OpenTokenDailyUsage?
     public let updatedAt: Date
 
     public init(
         provider: String = "codex",
-        session: CodexQuotaWindow?,
-        weekly: CodexQuotaWindow?,
+        windows: [CodexQuotaWindow] = [],
         todayTokens: OpenTokenDailyUsage? = nil,
         resetCredits: CodexResetCredits? = nil,
         updatedAt: Date)
     {
         self.provider = provider
-        self.session = session
-        self.weekly = weekly
+        // Keep one window per supported kind in a stable display order.
+        var unique: [CodexQuotaWindow.Kind: CodexQuotaWindow] = [:]
+        for window in windows where unique[window.kind] == nil {
+            unique[window.kind] = window
+        }
+        self.windows = CodexQuotaWindow.Kind.allCases.compactMap { unique[$0] }
         self.todayTokens = todayTokens
         self.resetCredits = resetCredits
         self.updatedAt = updatedAt
     }
 
+    public func quota(for kind: CodexQuotaWindow.Kind) -> CodexQuotaWindow? {
+        self.windows.first { $0.kind == kind }
+    }
+
+    public var fiveHourQuota: CodexQuotaWindow? { self.quota(for: .fiveHour) }
+    public var weeklyQuota: CodexQuotaWindow? { self.quota(for: .weekly) }
+    public var monthlyQuota: CodexQuotaWindow? { self.quota(for: .monthly) }
+
     public var bindingRemainingPercent: Double? {
-        [self.session, self.weekly]
-            .compactMap { $0?.remainingPercent }
+        self.windows
+            .map(\.remainingPercent)
             .min()
     }
 
     public var ringQuota: CodexQuotaWindow? {
-        if self.weekly?.windowMinutes == 10_080 { return self.weekly }
-        if self.session?.windowMinutes == 10_080 { return self.session }
-        return self.weekly ?? self.session
-    }
-
-    /// The core five-hour window, independent of which protocol slot contains it;
-    public var fiveHourQuota: CodexQuotaWindow? {
-        [self.session, self.weekly]
-            .compactMap { $0 }
-            .first { $0.windowMinutes == 300 }
+        [.weekly, .fiveHour, .monthly]
+            .compactMap { self.quota(for: $0) }
+            .first
     }
 
     public var weeklyPaceDeltaPercent: Double? {
         guard
-            let weekly = [self.session, self.weekly]
-                .compactMap({ $0 })
-                .first(where: { $0.windowMinutes == 10_080 }),
+            let weekly = self.weeklyQuota,
             weekly.remainingPercent > 0,
             let resetsAt = weekly.resetsAt,
-            let windowMinutes = weekly.windowMinutes,
-            windowMinutes > 0
+            weekly.windowMinutes > 0
         else { return nil }
 
-        let duration = TimeInterval(windowMinutes) * 60
+        let duration = TimeInterval(weekly.windowMinutes) * 60
         let startedAt = resetsAt.addingTimeInterval(-duration)
         let elapsed = self.updatedAt.timeIntervalSince(startedAt)
         let elapsedFraction = elapsed / duration

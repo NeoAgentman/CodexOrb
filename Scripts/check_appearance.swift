@@ -38,8 +38,10 @@ struct AppearanceChecks {
             .init(id: "fixture-b", status: "available", resetType: "codexRateLimits", expiresAt: Date().addingTimeInterval(864000)),
         ])
         let usage = CodexUsage(
-            session: .init(usedPercent: 20, windowMinutes: 300, resetsAt: Date().addingTimeInterval(3600), resetDescription: nil),
-            weekly: .init(usedPercent: 40, windowMinutes: 10080, resetsAt: Date().addingTimeInterval(86400), resetDescription: nil),
+            windows: [
+                .init(kind: .fiveHour, usedPercent: 20, resetsAt: Date().addingTimeInterval(3600), resetDescription: nil),
+                .init(kind: .weekly, usedPercent: 40, resetsAt: Date().addingTimeInterval(86400), resetDescription: nil),
+            ],
             todayTokens: .init(date: "2026-09-10", totalTokens: 300000, cacheReadTokens: 600000, inputTokens: 100000,
                               toolUsages: [.init(tool: "codex", totalTokens: 200000, cacheReadTokens: 300000),
                                            .init(tool: "hermes", totalTokens: 100000, cacheReadTokens: 300000)],

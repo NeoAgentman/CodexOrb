@@ -34,8 +34,7 @@ struct TokenDetailsPopoverChecks {
                 OpenTokenModelUsage(model: "gpt-5.6-luna", totalTokens: 1_500, cacheReadTokens: 2_500),
             ])
         controller.update(.available(CodexUsage(
-            session: nil,
-            weekly: nil,
+            windows: [],
             todayTokens: daily,
             updatedAt: Date())))
 

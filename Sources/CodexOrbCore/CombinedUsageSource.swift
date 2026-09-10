@@ -14,16 +14,14 @@ public enum IndependentUsageUpdate: Sendable {
         case let .quota(.success(quota)):
             return CodexUsage(
                 provider: quota.provider,
-                session: quota.session,
-                weekly: quota.weekly,
+                windows: quota.windows,
                 todayTokens: previous?.todayTokens,
                 resetCredits: quota.resetCredits,
                 updatedAt: quota.updatedAt)
         case let .tokens(.success(tokens)):
             return CodexUsage(
                 provider: previous?.provider ?? fallbackProvider,
-                session: previous?.session,
-                weekly: previous?.weekly,
+                windows: previous?.windows ?? [],
                 todayTokens: tokens,
                 resetCredits: previous?.resetCredits,
                 updatedAt: previous?.updatedAt ?? now)
@@ -88,8 +86,7 @@ public struct IndependentUsageRefresh: Sendable {
         return MergedUsageRefresh(
             usage: CodexUsage(
                 provider: quota?.provider ?? previous?.provider ?? fallbackProvider,
-                session: quota?.session,
-                weekly: quota?.weekly,
+                windows: quota?.windows ?? previous?.windows ?? [],
                 todayTokens: tokens,
                 resetCredits: quota?.resetCredits,
                 updatedAt: quota?.updatedAt ?? previous?.updatedAt ?? now),
@@ -191,8 +188,7 @@ public struct CombinedUsageSource: CodexUsageSourcing {
     private static func combine(codex: CodexUsage, tokens: OpenTokenDailyUsage) -> CodexUsage {
         CodexUsage(
             provider: codex.provider,
-            session: codex.session,
-            weekly: codex.weekly,
+            windows: codex.windows,
             todayTokens: tokens,
             resetCredits: codex.resetCredits,
             updatedAt: codex.updatedAt)

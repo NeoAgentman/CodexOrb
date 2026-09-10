@@ -15,7 +15,7 @@ enum CodexOrbCoreChecks {
         try await AccountChecks.run()
         try await CLIUpdateChecks.run()
         try await self.checkBundledToolIsolation()
-        try self.checkSessionAndWeeklyParsing()
+        try self.checkSupportedWindowParsing()
         try self.checkResetCredits()
         try self.checkSingleObjectCompatibility()
         try self.checkSyntheticPlaceholderFiltering()
@@ -95,7 +95,7 @@ enum CodexOrbCoreChecks {
         try self.expect(zero.resetCredits?.nextExpiration == nil, "zero inventory has no upcoming expiry")
     }
 
-    private static func checkSessionAndWeeklyParsing() throws {
+    private static func checkSupportedWindowParsing() throws {
         let json = """
         [{
           "provider": "codex",
@@ -116,13 +116,17 @@ enum CodexOrbCoreChecks {
         }]
         """
         let usage = try CodexUsageParser.parse(Data(json.utf8))
-        try self.expect(usage.session?.remainingPercent == 72, "session remaining")
-        try self.expect(usage.weekly?.remainingPercent == 41, "weekly remaining")
-        try self.expect(usage.bindingRemainingPercent == 41, "binding remaining")
-        try self.expect(usage.session?.windowMinutes == 300, "session duration")
         try self.expect(usage.fiveHourQuota?.remainingPercent == 72, "five-hour remaining")
-        try self.expect(usage.weekly?.windowMinutes == 10080, "weekly duration")
-        try self.expect(usage.weekly?.resetsAt != nil, "fractional ISO-8601 date")
+        try self.expect(usage.weeklyQuota?.remainingPercent == 41, "weekly remaining")
+        try self.expect(usage.bindingRemainingPercent == 41, "binding remaining")
+        try self.expect(usage.fiveHourQuota?.windowMinutes == 300, "five-hour duration")
+        try self.expect(usage.fiveHourQuota?.remainingPercent == 72, "five-hour remaining")
+        try self.expect(usage.weeklyQuota?.windowMinutes == 10080, "weekly duration")
+        try self.expect(usage.weeklyQuota?.resetsAt != nil, "fractional ISO-8601 date")
+
+        let monthly = try CodexUsageParser.parse(Data(#"{"provider":"codex","usage":{"primary":{"usedPercent":35,"windowMinutes":43200},"secondary":{"usedPercent":90,"windowMinutes":900},"updatedAt":"2026-08-30T10:00:00Z"}}"#.utf8))
+        try self.expect(monthly.monthlyQuota?.usedPercent == 35 && monthly.windows.count == 1,
+                        "classify monthly window and discard unsupported duration")
     }
 
     private static func checkSingleObjectCompatibility() throws {
@@ -137,8 +141,9 @@ enum CodexOrbCoreChecks {
         }
         """
         let usage = try CodexUsageParser.parse(Data(json.utf8))
-        try self.expect(usage.session?.remainingPercent == 90, "single-object session")
-        try self.expect(usage.weekly == nil, "single-object missing weekly")
+        try self.expect(usage.windows.isEmpty, "single-object missing duration is discarded")
+        try self.expect(usage.fiveHourQuota == nil && usage.weeklyQuota == nil && usage.monthlyQuota == nil,
+                        "single-object has no supported window")
         try self.expect(usage.resetCredits == nil, "missing inventory is unknown, not zero")
     }
 
@@ -147,26 +152,27 @@ enum CodexOrbCoreChecks {
         [{
           "provider": "codex",
           "usage": {
-            "primary": { "usedPercent": 0, "isSyntheticPlaceholder": true },
-            "secondary": { "usedPercent": 80 },
+            "primary": { "usedPercent": 0, "windowMinutes": 300, "isSyntheticPlaceholder": true },
+            "secondary": { "usedPercent": 80, "windowMinutes": 10080 },
             "updatedAt": "2026-08-30T10:00:00Z"
           }
         }]
         """
         let usage = try CodexUsageParser.parse(Data(json.utf8))
-        try self.expect(usage.session == nil, "synthetic session filtered")
+        try self.expect(usage.fiveHourQuota == nil, "synthetic five-hour window filtered")
+        try self.expect(usage.weeklyQuota?.remainingPercent == 20, "non-synthetic weekly window retained")
         try self.expect(usage.bindingRemainingPercent == 20, "synthetic binding remaining")
     }
 
     private static func checkRemainingClamping() {
         let over = CodexQuotaWindow(
+            kind: .fiveHour,
             usedPercent: 140,
-            windowMinutes: nil,
             resetsAt: nil,
             resetDescription: nil)
         let negative = CodexQuotaWindow(
+            kind: .fiveHour,
             usedPercent: -20,
-            windowMinutes: nil,
             resetsAt: nil,
             resetDescription: nil)
         precondition(over.remainingPercent == 0, "over-quota remaining was not clamped")
@@ -200,15 +206,15 @@ enum CodexOrbCoreChecks {
         let script = """
         #!/bin/sh
         test "$*" = "usage --provider codex --source oauth --format json --json-only" || exit 64
-        printf '%s\n' '[{"provider":"codex","usage":{"primary":{"usedPercent":25},"secondary":{"usedPercent":50},"updatedAt":"2026-08-30T10:00:00Z"}}]'
+        printf '%s\n' '[{"provider":"codex","usage":{"primary":{"usedPercent":25,"windowMinutes":300},"secondary":{"usedPercent":50,"windowMinutes":10080},"updatedAt":"2026-08-30T10:00:00Z"}}]'
         """
         try Data(script.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
 
         let source = CodexBarCLIUsageSource(bundledExecutableDirectory: nil, environment: ["PATH": directory.path], timeout: 2)
         let usage = try await source.fetch()
-        try self.expect(usage.session?.remainingPercent == 75, "PATH session remaining")
-        try self.expect(usage.weekly?.remainingPercent == 50, "PATH weekly remaining")
+        try self.expect(usage.fiveHourQuota?.remainingPercent == 75, "PATH five-hour remaining")
+        try self.expect(usage.weeklyQuota?.remainingPercent == 50, "PATH weekly remaining")
     }
 
     private static func checkOpenTokenAggregation() throws {
@@ -289,11 +295,11 @@ enum CodexOrbCoreChecks {
         let updatedAt = ISO8601DateFormatter().date(from: "2026-08-03T18:00:00Z")!
         let resetsAt = ISO8601DateFormatter().date(from: "2026-08-09T00:00:00Z")!
         let weekly = CodexQuotaWindow(
+            kind: .weekly,
             usedPercent: 30,
-            windowMinutes: 10_080,
             resetsAt: resetsAt,
             resetDescription: nil)
-        let usage = CodexUsage(session: nil, weekly: weekly, updatedAt: updatedAt)
+        let usage = CodexUsage(windows: [weekly], updatedAt: updatedAt)
         try self.expect(abs((usage.weeklyPaceDeltaPercent ?? 0) - 5) < 0.001, "weekly pace delta")
     }
 
@@ -302,11 +308,11 @@ enum CodexOrbCoreChecks {
         let resetsAt = Date(timeIntervalSince1970: 2_000_000)
         let updatedAt = resetsAt.addingTimeInterval(-duration * 0.99)
         let weekly = CodexQuotaWindow(
+            kind: .weekly,
             usedPercent: 2,
-            windowMinutes: 10_080,
             resetsAt: resetsAt,
             resetDescription: nil)
-        let usage = CodexUsage(session: nil, weekly: weekly, updatedAt: updatedAt)
+        let usage = CodexUsage(windows: [weekly], updatedAt: updatedAt)
         guard let pace = usage.weeklyPaceDeltaPercent else {
             throw CheckFailure(message: "Weekly pace was hidden during the first 3 percent of the cycle")
         }
@@ -318,25 +324,23 @@ enum CodexOrbCoreChecks {
         let resetsAt = Date(timeIntervalSince1970: 2_000_000)
         let updatedAt = resetsAt.addingTimeInterval(-duration * 0.01)
         for used in [100.0, 101.0] {
-            let window = CodexQuotaWindow(usedPercent: used, windowMinutes: 10_080,
+            let window = CodexQuotaWindow(kind: .weekly, usedPercent: used,
                                           resetsAt: resetsAt, resetDescription: nil)
-            for usage in [CodexUsage(session: nil, weekly: window, updatedAt: updatedAt),
-                          CodexUsage(session: window, weekly: nil, updatedAt: updatedAt)] {
-                try self.expect(usage.weeklyPaceDeltaPercent == nil,
-                                "Exhausted weekly quota must hide pace, got \(String(describing: usage.weeklyPaceDeltaPercent))")
-            }
+            let usage = CodexUsage(windows: [window], updatedAt: updatedAt)
+            try self.expect(usage.weeklyPaceDeltaPercent == nil,
+                            "Exhausted weekly quota must hide pace, got \(String(describing: usage.weeklyPaceDeltaPercent))")
         }
-        let available = CodexQuotaWindow(usedPercent: 99, windowMinutes: 10_080,
+        let available = CodexQuotaWindow(kind: .weekly, usedPercent: 99,
                                         resetsAt: resetsAt, resetDescription: nil)
-        try self.expect(CodexUsage(session: nil, weekly: available, updatedAt: updatedAt)
+        try self.expect(CodexUsage(windows: [available], updatedAt: updatedAt)
             .weeklyPaceDeltaPercent != nil, "Available weekly quota retains pace")
     }
 
     private static func checkProviderSelection() throws {
         let json = """
         [
-          {"provider":"codex","usage":{"primary":{"usedPercent":10},"updatedAt":"2026-08-30T10:00:00Z"}},
-          {"provider":"claude","usage":{"primary":{"usedPercent":25},"secondary":{"usedPercent":40,"windowMinutes":10080},"updatedAt":"2026-08-30T10:00:00Z"}}
+          {"provider":"codex","usage":{"primary":{"usedPercent":10,"windowMinutes":300},"updatedAt":"2026-08-30T10:00:00Z"}},
+          {"provider":"claude","usage":{"primary":{"usedPercent":25,"windowMinutes":300},"secondary":{"usedPercent":40,"windowMinutes":10080},"updatedAt":"2026-08-30T10:00:00Z"}}
         ]
         """
         let usage = try CodexUsageParser.parse(Data(json.utf8))
@@ -346,12 +350,17 @@ enum CodexOrbCoreChecks {
 
     private static func checkRingQuotaFallback() throws {
         let primary = CodexQuotaWindow(
+            kind: .fiveHour,
             usedPercent: 35,
-            windowMinutes: 300,
             resetsAt: nil,
             resetDescription: nil)
-        let usage = CodexUsage(session: primary, weekly: nil, updatedAt: Date())
+        let usage = CodexUsage(windows: [primary], updatedAt: Date())
         try self.expect(usage.ringQuota?.remainingPercent == 65, "primary ring fallback")
+
+        let monthly = CodexUsage(
+            windows: [CodexQuotaWindow(kind: .monthly, usedPercent: 35, resetsAt: nil, resetDescription: nil)],
+            updatedAt: Date())
+        try self.expect(monthly.ringQuota?.kind == .monthly, "monthly-only ring fallback")
     }
 
     private static func checkCodexBarFallbackInvocation() async throws {
@@ -364,7 +373,7 @@ enum CodexOrbCoreChecks {
         let script = """
         #!/bin/sh
         test "$*" = "usage --provider codex --source oauth --format json --json-only" || exit 64
-        printf '%s\n' '[{"provider":"codex","usage":{"primary":{"usedPercent":20},"secondary":{"usedPercent":30,"windowMinutes":10080},"updatedAt":"2026-08-30T10:00:00Z"}}]'
+        printf '%s\n' '[{"provider":"codex","usage":{"primary":{"usedPercent":20,"windowMinutes":300},"secondary":{"usedPercent":30,"windowMinutes":10080},"updatedAt":"2026-08-30T10:00:00Z"}}]'
         """
         try Data(script.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
@@ -384,27 +393,25 @@ enum CodexOrbCoreChecks {
             return
         }
         let usage = try await CodexAppServerUsageSource(accountHome: account.home).fetch()
-        try self.expect(usage.fiveHourQuota != nil || usage.weekly != nil, "live Codex windows")
+        try self.expect(usage.fiveHourQuota != nil || usage.weeklyQuota != nil || usage.monthlyQuota != nil, "live Codex windows")
     }
 
     private static func checkIndependentMerge() throws {
         let previousTokens = OpenTokenDailyUsage(date: "2026-08-30", totalTokens: 100, cacheReadTokens: 900)
         let previous = CodexUsage(
-            session: nil,
-            weekly: CodexQuotaWindow(
+            windows: [CodexQuotaWindow(
+                kind: .weekly,
                 usedPercent: 50,
-                windowMinutes: 10_080,
                 resetsAt: nil,
-                resetDescription: nil),
+                resetDescription: nil)],
             todayTokens: previousTokens,
             updatedAt: Date(timeIntervalSince1970: 1))
         let refreshedQuota = CodexUsage(
-            session: nil,
-            weekly: CodexQuotaWindow(
+            windows: [CodexQuotaWindow(
+                kind: .weekly,
                 usedPercent: 20,
-                windowMinutes: 10_080,
                 resetsAt: nil,
-                resetDescription: nil),
+                resetDescription: nil)],
             updatedAt: Date(timeIntervalSince1970: 2))
 
         let quotaOnly = IndependentUsageRefresh(

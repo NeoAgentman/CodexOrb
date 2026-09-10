@@ -16,13 +16,20 @@ public enum AppServerUsageParser {
             let id = legacy?["limitId"] as? String
             bucket = id == nil || id == "codex" ? legacy : nil
         }
-        let windows = [bucket?["primary"], bucket?["secondary"]].compactMap { $0 as? [String: Any] }
-        func window(_ minutes: Int) -> CodexQuotaWindow? {
-            guard let value = windows.first(where: { $0["windowDurationMins"] as? Int == minutes }),
-                  let used = value["usedPercent"] as? Double, used.isFinite else { return nil }
-            return CodexQuotaWindow(usedPercent: used, windowMinutes: minutes,
-                                    resetsAt: (value["resetsAt"] as? Double).map(Date.init(timeIntervalSince1970:)), resetDescription: nil)
-        }
+        let windows = [bucket?["primary"], bucket?["secondary"]]
+            .compactMap { $0 as? [String: Any] }
+            .compactMap { value -> CodexQuotaWindow? in
+                guard let minutes = value["windowDurationMins"] as? Int,
+                      let kind = CodexQuotaWindow.Kind(windowMinutes: minutes),
+                      let used = value["usedPercent"] as? Double,
+                      used.isFinite
+                else { return nil }
+                return CodexQuotaWindow(
+                    kind: kind,
+                    usedPercent: used,
+                    resetsAt: (value["resetsAt"] as? Double).map(Date.init(timeIntervalSince1970:)),
+                    resetDescription: nil)
+            }
         var resets: CodexResetCredits?
         if let summary = object["rateLimitResetCredits"] as? [String: Any], let count = summary["availableCount"] as? Int {
             let cards = (summary["credits"] as? [[String: Any]])?.compactMap { value -> CodexResetCredits.Credit? in
@@ -32,7 +39,7 @@ public enum AppServerUsageParser {
             }
             resets = CodexResetCredits(availableCount: count, credits: cards)
         }
-        return CodexUsage(session: window(300), weekly: window(10080), resetCredits: resets, updatedAt: now)
+        return CodexUsage(windows: windows, resetCredits: resets, updatedAt: now)
     }
 }
 

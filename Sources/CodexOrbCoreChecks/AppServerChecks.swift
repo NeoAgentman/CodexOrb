@@ -46,14 +46,14 @@ enum AppServerChecks {
         let a = try account("account-A")
         let b = try account("account-B")
         let usage = try await service.fetch(account: a)
-        try expect(usage.weekly?.usedPercent == 60 && usage.fiveHourQuota?.usedPercent == 20, "fragmented response and interleaved notification")
+        try expect(usage.weeklyQuota?.usedPercent == 60 && usage.fiveHourQuota?.usedPercent == 20, "fragmented response and interleaved notification")
         let missingID = try account("missing-id", includeAccountID: false)
         let missingIDUsage = try await service.fetch(account: missingID)
-        try expect(missingIDUsage.weekly?.usedPercent == 60, "missing local account ID does not become an empty expected ID")
+        try expect(missingIDUsage.weeklyQuota?.usedPercent == 60, "missing local account ID does not become an empty expected ID")
         try expect(try calls(a).isEmpty, "read-only preflight cannot consume")
         try expect(try store.read(a.identityKey) == nil, "preflight creates no pending mutation")
         let result = try await service.consume(account: a, creditID: "card-1")
-        try expect(result.outcome == .reset && result.usage?.weekly?.usedPercent == 0, "consume then refresh")
+        try expect(result.outcome == .reset && result.usage?.weeklyQuota?.usedPercent == 0, "consume then refresh")
         try expect(try store.read(a.identityKey) == nil, "completed operation removed")
         try expect(try calls(a).count == 1 && calls(b).isEmpty, "account scoped mutation")
 
@@ -140,14 +140,21 @@ enum AppServerChecks {
     static func parsing() throws {
         let data = Data(#"{"rateLimits":{"primary":{"usedPercent":99,"windowDurationMins":300}},"rateLimitsByLimitId":{"codex":{"primary":{"usedPercent":60,"windowDurationMins":10080,"resetsAt":2000000000},"secondary":{"usedPercent":20,"windowDurationMins":300}},"other":{"primary":{"usedPercent":90,"windowDurationMins":300}}},"rateLimitResetCredits":{"availableCount":3,"credits":[{"id":"later","status":"available","resetType":"codexRateLimits","expiresAt":2100000000},{"id":"first","status":"available","resetType":"codexRateLimits","expiresAt":2000000000},{"id":"forever","status":"available","resetType":"codexRateLimits","expiresAt":null}]}}"#.utf8)
         let value = try AppServerUsageParser.parse(data)
-        try expect(value.fiveHourQuota?.usedPercent == 20 && value.weekly?.usedPercent == 60, "bucket before duration mapping")
+        try expect(value.fiveHourQuota?.usedPercent == 20 && value.weeklyQuota?.usedPercent == 60, "bucket before duration mapping")
         try expect(value.resetCredits?.availableCards.map(\.id) == ["first", "later", "forever"], "sorted cards retain IDs")
         for (field, expected) in [("null", Optional<Int>.none), ("[]", 0)] {
             let parsed = try AppServerUsageParser.parse(Data("{\"rateLimits\":{},\"rateLimitResetCredits\":{\"availableCount\":4,\"credits\":\(field)}}".utf8))
             try expect(parsed.resetCredits?.credits?.count == expected && parsed.resetCredits?.availableCount == 4, "unknown/empty details preserve inventory")
         }
         let other = try AppServerUsageParser.parse(Data(#"{"rateLimits":{"primary":{"usedPercent":50,"windowDurationMins":300}},"rateLimitsByLimitId":{"other":{"primary":{"usedPercent":20,"windowDurationMins":10080}}}}"#.utf8))
-        try expect(other.weekly == nil && other.session == nil, "never substitute another bucket")
+        try expect(other.windows.isEmpty, "never substitute another bucket")
+
+        let monthly = try AppServerUsageParser.parse(Data(#"{"rateLimits":{"primary":{"usedPercent":35,"windowDurationMins":43200},"secondary":{"usedPercent":90,"windowDurationMins":900}}}"#.utf8))
+        try expect(monthly.monthlyQuota?.usedPercent == 35 && monthly.fiveHourQuota == nil && monthly.weeklyQuota == nil,
+                   "classify monthly window and discard unsupported duration")
+
+        let unsupported = try AppServerUsageParser.parse(Data(#"{"rateLimits":{"primary":{"usedPercent":10,"windowDurationMins":15},"secondary":null}}"#.utf8))
+        try expect(unsupported.windows.isEmpty, "discard unsupported app-server window")
     }
 
     static let peer = #"""
