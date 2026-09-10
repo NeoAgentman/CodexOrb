@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         _ = notification
+        self.settings.appearance.apply()
         self.panelController.onRefresh = { [weak self] in
             self?.refresh()
         }
@@ -211,9 +212,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func apply(_ settings: AppSettings) {
-        var previousWithLanguage = self.settings
-        previousWithLanguage.language = settings.language
-        if previousWithLanguage == settings {
+        var previousWithPresentation = self.settings
+        previousWithPresentation.language = settings.language
+        previousWithPresentation.appearance = settings.appearance
+        if self.settings.appearance != settings.appearance {
+            settings.appearance.apply()
+        }
+        if previousWithPresentation == settings {
             self.settings = settings
             settings.save()
             self.panelController.reloadLanguage()

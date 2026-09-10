@@ -74,6 +74,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private var isExpandedByDefault = false
     private var resizeTask: Task<Void, Never>?
     private var hoverDismissTask: Task<Void, Never>?
+    private var appearanceObservation: NSKeyValueObservation?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -101,6 +102,13 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         super.init()
 
         self.orbView.delegate = self
+        self.appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in
+                // Popovers retain a separate appearance, including while already open.
+                self?.resetPopover?.appearance = NSApp.effectiveAppearance
+                self?.accountPopover?.appearance = NSApp.effectiveAppearance
+            }
+        }
         self.configure(self.panel, contentView: self.orbView)
         self.accountBadgeView.onActivate = { [weak self] in self?.showAccountDetails() }
         self.configure(self.accountBadgePanel, contentView: self.accountBadgeView)
@@ -143,6 +151,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.hoverDismissTask?.cancel()
         self.resizeTask?.cancel()
         NotificationCenter.default.removeObserver(self)
+        self.appearanceObservation = nil
         self.accountBadgePanel.orderOut(nil)
         self.accountBadgePanel.close()
         self.panel.orderOut(nil)
@@ -281,6 +290,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         frame.size.width = Layout.expandedSize.width * self.capsuleScale
         self.applyFrame(self.constrainedFrame(frame), display: true)
         let popover = NSPopover()
+        popover.appearance = self.orbView.effectiveAppearance
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
@@ -309,6 +319,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.accountPopover?.close()
 
         let popover = NSPopover()
+        popover.appearance = self.orbView.effectiveAppearance
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
@@ -432,6 +443,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
                 resetPopover?.close()
                 hoverDismissTask?.cancel()
                 let popover = NSPopover()
+                popover.appearance = orbView.effectiveAppearance
                 popover.behavior = .transient
                 popover.animates = false
                 popover.delegate = self

@@ -56,6 +56,10 @@ public enum L10n {
     }
     public static func text(_ message: Message) -> String { message.rendered() }
     static let english: [String: String] = [
+        "外观": "Appearance",
+        "跟随系统": "System",
+        "浅色": "Light",
+        "深色": "Dark",
         "确认使用这个账号的重置卡？": "Use a reset card for this account?",
         "恢复这个账号的重置操作？": "Recover this account’s reset?",
         "确认": "Confirm",

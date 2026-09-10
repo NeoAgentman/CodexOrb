@@ -52,9 +52,14 @@ struct Preview {
             let controls = descendants(view)
             let popup = controls.compactMap { $0 as? NSPopUpButton }.first { $0.itemTitles == ["中文", "English"] }!
             popup.selectItem(at: language == .chinese ? 1 : 0)
+            let appearance = controls.compactMap { $0 as? NSPopUpButton }
+                .first { $0.itemTitles == AppAppearance.allCases.map(\.title) }!
+            precondition(appearance.indexOfSelectedItem == AppAppearance.allCases.firstIndex(of: settings.appearance))
+            appearance.selectItem(at: 2)
             let save = controls.compactMap { $0 as? NSButton }.first { $0.title == L10n.text("保存") }!
             save.performClick(nil)
             precondition(applied?.language == (language == .chinese ? .english : .chinese))
+            precondition(applied?.appearance == .dark)
             window.close()
         }
         print("Localization UI checks passed: bilingual layouts, save without login, persistence, compact expiration")

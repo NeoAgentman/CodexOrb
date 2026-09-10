@@ -61,6 +61,11 @@ enum AccountBadgeLayout {
 
 @MainActor
 final class AccountBadgeView: NSView {
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        self.needsDisplay = true
+    }
+
     var account: AccountBadgeInfo? {
         didSet {
             self.needsDisplay = true

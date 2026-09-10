@@ -10,6 +10,8 @@ bin_dir = Path(subprocess.check_output(['swift', 'build', '--show-bin-path'], te
 objects = [p for p in (bin_dir/'CodexOrb.product/Objects.LinkFileList').read_text().splitlines()
            if '/CodexOrbCore.build/' in p]
 checks = [
+    ('appearance', ['AppSettings.swift', 'CLIUpdateController.swift', 'SettingsWindowController.swift', 'AccountBadgeView.swift', 'CapsuleSurfaceStyle.swift', 'CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift', 'TokenDetailsView.swift'], 'check_appearance.swift'),
+    ('localization', ['AppSettings.swift', 'CLIUpdateController.swift', 'SettingsWindowController.swift', 'ResetCardsView.swift'], 'check_localization.swift'),
     ('account-badge', ['AccountBadgeView.swift', 'CapsuleSurfaceStyle.swift'], 'check_account_badge.swift'),
     ('account-badge-live', ['AccountBadgeView.swift', 'CapsuleSurfaceStyle.swift', 'CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift', 'TokenDetailsView.swift'], 'check_account_badge_live.swift'),
     ('popover', ['AccountBadgeView.swift', 'CapsuleSurfaceStyle.swift', 'CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift', 'TokenDetailsView.swift'], 'check_reset_popover.swift'),

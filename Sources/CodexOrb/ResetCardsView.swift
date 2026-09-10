@@ -4,6 +4,11 @@ import CodexOrbCore
 /// Cards retain their backend identity through sorting and interaction.
 @MainActor
 final class ResetCardsView: NSView {
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        self.needsDisplay = true
+    }
+
     private let credits: CodexResetCredits?
     private let onConsume: (String) -> Void
     private let busy: Bool

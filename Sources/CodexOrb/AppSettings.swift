@@ -1,5 +1,27 @@
-import Foundation
+import AppKit
 import CodexOrbCore
+
+enum AppAppearance: String, CaseIterable {
+    case system
+    case light
+    case dark
+
+    var title: String {
+        switch self {
+        case .system: L10n.text("跟随系统")
+        case .light: L10n.text("浅色")
+        case .dark: L10n.text("深色")
+        }
+    }
+
+    @MainActor func apply() {
+        switch self {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+}
 
 struct AppSettings: Equatable {
     struct RefreshChoice {
@@ -20,9 +42,11 @@ struct AppSettings: Equatable {
         static let accountHome = "CodexOrb.accountHome"
         static let capsuleExpandedByDefault = "CodexOrb.capsuleExpandedByDefault"
         static let refreshInterval = "CodexOrb.refreshInterval"
+        static let appearance = "CodexOrb.appearance"
     }
 
     var language: AppLanguage = .chinese
+    var appearance: AppAppearance = .system
     var accountHome: String?
     var capsuleExpandedByDefault: Bool = false
     var provider: String { "codex" }
@@ -38,6 +62,7 @@ struct AppSettings: Equatable {
             : 5 * 60
         return AppSettings(
             language: AppLanguage.load(from: defaults),
+            appearance: defaults.string(forKey: DefaultsKey.appearance).flatMap(AppAppearance.init(rawValue:)) ?? .system,
             accountHome: accountHome,
             capsuleExpandedByDefault: defaults.bool(forKey: DefaultsKey.capsuleExpandedByDefault),
             refreshInterval: validInterval)
@@ -45,6 +70,7 @@ struct AppSettings: Equatable {
 
     func save(to defaults: UserDefaults = .standard) {
         defaults.set(self.language.rawValue, forKey: AppLanguage.defaultsKey)
+        defaults.set(self.appearance.rawValue, forKey: DefaultsKey.appearance)
         if let accountHome = self.accountHome {
             defaults.set(accountHome, forKey: DefaultsKey.accountHome)
         } else {

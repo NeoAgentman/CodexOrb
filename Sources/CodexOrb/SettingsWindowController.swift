@@ -17,6 +17,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var isAddingAccount = false
     private let defaultExpandedToggle = NSButton(checkboxWithTitle: L10n.text("默认展开胶囊"), target: nil, action: nil)
     private let languagePopup = NSPopUpButton()
+    private let appearancePopup = NSPopUpButton()
     private let refreshPopup = NSPopUpButton()
     private let validationLabel = NSTextField(labelWithString: "")
     private let updateButton = NSButton(title: L10n.text("检查更新"), target: nil, action: nil)
@@ -30,7 +31,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         self.onApply = onApply
         self.savedAccountHome = settings.accountHome
         let window = NSWindow(
-            contentRect: CGRect(x: 0, y: 0, width: 600, height: 720),
+            contentRect: CGRect(x: 0, y: 0, width: 600, height: 754),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false)
@@ -62,6 +63,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         self.languagePopup.addItems(withTitles: ["中文", "English"])
         self.languagePopup.selectItem(at: settings.language == .chinese ? 0 : 1)
+        for appearance in AppAppearance.allCases {
+            self.appearancePopup.addItem(withTitle: appearance.title)
+            self.appearancePopup.lastItem?.representedObject = appearance.rawValue
+        }
+        self.appearancePopup.selectItem(at: AppAppearance.allCases.firstIndex(of: settings.appearance) ?? 0)
+        self.appearancePopup.setAccessibilityLabel(L10n.text("外观"))
         self.currentAccountLabel.font = .systemFont(ofSize: 11)
         self.currentAccountLabel.textColor = .secondaryLabelColor
         self.currentAccountLabel.maximumNumberOfLines = 2
@@ -161,6 +168,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let capsuleSection = section([
             text(L10n.text("胶囊显示"), heading: true),
             row([text(L10n.text("语言"), heading: true), spacer(), self.languagePopup]),
+            row([text(L10n.text("外观"), heading: true), spacer(), self.appearancePopup]),
             self.defaultExpandedToggle,
         ])
         let toolsSection = section([
@@ -298,7 +306,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             accountHome = nil
         }
         guard let interval = self.refreshPopup.selectedItem?.representedObject as? TimeInterval else { return }
+        guard let appearanceValue = self.appearancePopup.selectedItem?.representedObject as? String,
+              let appearance = AppAppearance(rawValue: appearanceValue) else { return }
         let settings = AppSettings(language: self.languagePopup.indexOfSelectedItem == 1 ? .english : .chinese,
+                                   appearance: appearance,
                                    accountHome: accountHome,
                                    capsuleExpandedByDefault: self.defaultExpandedToggle.state == .on,
                                    refreshInterval: interval)
