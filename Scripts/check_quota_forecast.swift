@@ -38,6 +38,8 @@ struct QuotaForecastChecks {
         for forbidden in ["5 小时剩余额度", "5 小时重置剩余时间", "周剩余额度", "周重置剩余时间", "暂不可用"] {
             precondition(!monthlyLabels.contains(forbidden), "Missing quota must not render a placeholder: \(forbidden)")
         }
+        precondition(monthlyOnly.frame.height < 227.2,
+                     "Sparse quota card retained the full four-row height")
         print("Quota forecast UI checks passed: compact two-column probabilities and confidence")
     }
 

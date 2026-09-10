@@ -20,8 +20,8 @@ final class QuotaDetailsView: NSView {
     private static let logicalWidth: CGFloat = 360
     private static let displayScale: CGFloat = 0.8
     private static let renderedWidth = QuotaDetailsView.logicalWidth * QuotaDetailsView.displayScale
-    private static let baseLogicalHeight: CGFloat = 360
-    private static let baseRowCount = 4
+    private static let baseLogicalHeight: CGFloat = 252
+    private static let baseRowCount = 2
     private static let rowHeight: CGFloat = 56
 
     var onClose: (() -> Void)?

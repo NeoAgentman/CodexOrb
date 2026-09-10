@@ -47,12 +47,17 @@ struct TokenDetailsPopoverChecks {
         view.mouseDown(with: event(.leftMouseDown))
         view.mouseUp(with: event(.leftMouseUp))
 
-        precondition(abs(view.tokenDetailsRect.maxY - view.resetCardsRect.maxY) < 0.001,
-                     "Token and reset popovers should share the capsule's outer anchor edge")
+        precondition(abs(view.tokenDetailsRect.minY - view.resetCardsRect.minY) < 0.001
+                     && abs(view.tokenDetailsRect.maxY - view.resetCardsRect.maxY) < 0.001,
+                     "Token and reset popovers should share the capsule's outer anchor edges")
 
         guard let content = NSApp.windows.compactMap({ $0.contentViewController?.view as? TokenDetailsView }).first,
               content.window?.isVisible == true else {
             fatalError("Token details popover did not appear")
+        }
+        let cardFrame = content.window!.convertToScreen(content.frame)
+        guard !cardFrame.intersects(panel.frame) else {
+            fatalError("Token details card overlaps capsule: card=\(cardFrame), capsule=\(panel.frame)")
         }
         let labels = self.descendants(of: content).compactMap { ($0 as? NSTextField)?.stringValue }
         for expected in ["按工具", "按模型", "codex", "hermes", "sol", "luna"] {

@@ -408,9 +408,10 @@ final class OrbView: NSView, NSMenuDelegate {
 
     var tokenDetailsRect: CGRect {
         let tokenRect = self.tokenConsumptionRect
-        // Keep the arrow near the capsule's outer edge so the card body has the
-        // same breathing room as the reset-card popover.
-        return tokenRect.offsetBy(dx: 0, dy: self.resetCardsRect.maxY - tokenRect.maxY)
+        // Use the capsule's full outer vertical span so either popover edge
+        // anchors outside the capsule, matching the reset-card popover.
+        return CGRect(x: tokenRect.minX, y: self.resetCardsRect.minY,
+                      width: tokenRect.width, height: self.resetCardsRect.height)
     }
 
     var resetCardsRect: CGRect {
