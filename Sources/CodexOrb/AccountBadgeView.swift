@@ -40,12 +40,7 @@ enum AccountBadgeLayout {
     }
 
     static func side(capsuleFrame: CGRect, visibleFrame: CGRect, badgeSize: CGFloat) -> AccountBadgeSide {
-        let requiredSpace = badgeSize + Self.edgeGap - Self.overlap
-        let leftSpace = capsuleFrame.minX - visibleFrame.minX
-        let rightSpace = visibleFrame.maxX - capsuleFrame.maxX
-        if rightSpace < requiredSpace, leftSpace >= requiredSpace { return .left }
-        if leftSpace < requiredSpace, rightSpace >= requiredSpace { return .right }
-        return rightSpace >= leftSpace ? .right : .left
+        .left
     }
 
     static func frame(capsuleFrame: CGRect, visibleFrame: CGRect, scale: CGFloat) -> (side: AccountBadgeSide, frame: CGRect) {

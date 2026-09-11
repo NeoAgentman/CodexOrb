@@ -20,19 +20,17 @@ final class QuotaDetailsView: NSView {
     private static let logicalWidth: CGFloat = 360
     private static let displayScale: CGFloat = 0.8
     private static let renderedWidth = QuotaDetailsView.logicalWidth * QuotaDetailsView.displayScale
-    private static let baseLogicalHeight: CGFloat = 252
+    private static let baseLogicalHeight: CGFloat = 164
     private static let baseRowCount = 2
     private static let rowHeight: CGFloat = 56
 
     var onClose: (() -> Void)?
     private var usage: CodexUsage?
-    private var forecast: CodexResetForecast?
     private var countdownTask: Task<Void, Never>?
     override var acceptsFirstResponder: Bool { true }
 
-    init(usage: CodexUsage?, forecast: CodexResetForecast? = nil) {
+    init(usage: CodexUsage?) {
         self.usage = usage
-        self.forecast = forecast
         let rowCount = Self.detailRows(for: usage).count
         let logicalHeight = Self.contentHeight(rowCount: rowCount)
         super.init(frame: NSRect(x: 0, y: 0,
@@ -60,12 +58,7 @@ final class QuotaDetailsView: NSView {
     }
 
     func update(_ usage: CodexUsage?) {
-        self.update(usage, forecast: self.forecast)
-    }
-
-    func update(_ usage: CodexUsage?, forecast: CodexResetForecast?) {
         self.usage = usage
-        self.forecast = forecast
         self.rebuild()
     }
 
@@ -90,7 +83,6 @@ final class QuotaDetailsView: NSView {
             }
             rowY -= Self.rowHeight
         }
-        self.forecastSection()
     }
 
     private static func detailRows(for usage: CodexUsage?) -> [DetailRow] {
@@ -123,58 +115,6 @@ final class QuotaDetailsView: NSView {
 
     private static func contentHeight(rowCount: Int) -> CGFloat {
         Self.baseLogicalHeight + CGFloat(max(0, rowCount - Self.baseRowCount)) * Self.rowHeight
-    }
-
-    private func forecastSection() {
-        let separator = NSBox(frame: NSRect(x: 18, y: 86, width: 324, height: 2))
-        separator.boxType = .separator
-        self.addSubview(separator)
-        self.label(L10n.text("全局重置预测"), x: 18, y: 60, width: 160, size: 13, weight: .semibold)
-        let confidence = self.forecast?.confidence ?? L10n.text("未知")
-        self.label(
-            L10n.text("置信度：\(confidence)"),
-            x: 180,
-            y: 60,
-            width: 162,
-            size: 12,
-            weight: .semibold,
-            alignment: .right)
-        self.forecastColumn(
-            L10n.text("24 小时内"),
-            value: self.forecast?.probability24h,
-            x: 18)
-        self.forecastColumn(
-            L10n.text("48 小时内"),
-            value: self.forecast?.probability48h,
-            x: 192)
-    }
-
-    private func forecastColumn(_ title: String, value: Int?, x: CGFloat) {
-        let width: CGFloat = 150
-        let valueText = value.map { "\($0)%" } ?? L10n.text("未知")
-        self.label(
-            title,
-            x: x,
-            y: 31,
-            width: 110,
-            size: 12,
-            weight: .medium)
-        self.label(
-            valueText,
-            x: x + 110,
-            y: 31,
-            width: 40,
-            size: 13,
-            weight: .regular,
-            alignment: .right)
-        let bar = QuotaDetailBar(frame: NSRect(x: x, y: 15, width: width, height: 7))
-        bar.fraction = value.map { CGFloat($0) / CGFloat(100) }
-        bar.tint = .controlAccentColor
-        bar.setAccessibilityElement(true)
-        bar.setAccessibilityRole(.progressIndicator)
-        bar.setAccessibilityLabel(title)
-        bar.setAccessibilityValue(valueText)
-        self.addSubview(bar)
     }
 
     private func quotaRow(_ title: String, quota: CodexQuotaWindow, y: CGFloat) {

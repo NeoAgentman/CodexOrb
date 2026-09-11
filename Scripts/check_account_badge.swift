@@ -17,9 +17,9 @@ struct AccountBadgeChecks {
 
         let nearLeft = CGRect(x: 10, y: 420, width: 60, height: 56)
         let leftPlacement = AccountBadgeLayout.frame(capsuleFrame: nearLeft, visibleFrame: visible, scale: 1)
-        expect(leftPlacement.side == .right, "Left-edge capsule should attach the badge on the right")
-        expect(leftPlacement.frame.minX >= nearLeft.maxX - AccountBadgeLayout.overlap,
-               "Right badge must stay attached at the capsule edge")
+        expect(leftPlacement.side == .left, "Account badge stays on the left")
+        expect(leftPlacement.frame.maxX <= nearLeft.minX + AccountBadgeLayout.overlap,
+               "Left badge must stay attached at the capsule edge")
 
         let info = AccountBadgeInfo(email: "hittie@example.test", workspace: "pro")
         expect(info.initial == "H", "Badge initial")
