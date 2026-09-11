@@ -21,7 +21,7 @@ struct AccountBadgeLiveChecks {
         controller.show()
 
         guard let capsule = NSApp.windows.first(where: { $0.contentView is OrbView }),
-              let badgePanel = NSApp.windows.first(where: { $0.contentView is AccountBadgeView }),
+              let badgePanel = NSApp.windows.first(where: { $0 is AccountBadgePanel }),
               let badgeView = badgePanel.contentView as? AccountBadgeView else {
             fatalError("Account badge panel was not created")
         }

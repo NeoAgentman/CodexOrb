@@ -61,10 +61,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private var capsuleScale: CGFloat
     private var accountInfo: AccountBadgeInfo?
     private var accountChoices: [AccountBadgeInfo] = []
-    private let forecastBadgeView = ForecastBadgeView(frame: NSRect(x: 0, y: 0, width: 30, height: 56))
-    private let forecastBadgePanel = AccountBadgePanel(
-        contentRect: NSRect(x: 0, y: 0, width: 30, height: 56),
-        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    private var forecast: CodexResetForecast?
     private var resizeStartFrame: CGRect?
     private var resizeEdge: CapsuleGeometry.Edge = []
     private enum DetailKind { case resets, quota, tokens }
@@ -116,8 +113,6 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.accountBadgeView.onActivate = { [weak self] in self?.showAccountDetails() }
         self.configure(self.accountBadgePanel, contentView: self.accountBadgeView)
         self.accountBadgePanel.hasShadow = false
-        self.configure(self.forecastBadgePanel, contentView: self.forecastBadgeView)
-        self.forecastBadgePanel.hasShadow = false
         self.restorePosition()
         self.accountBadgePanel.orderOut(nil)
 
@@ -135,7 +130,6 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         let state = self.orbView.displayState
         self.orbView.displayState = state
         self.accountBadgeView.account = self.accountInfo
-        self.forecastBadgeView.reloadLanguage()
         self.accountBadgePanel.invalidateCursorRects(for: self.accountBadgeView)
     }
 
@@ -148,7 +142,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
 
     func show() {
         self.panel.orderFrontRegardless()
-        self.positionBadges()
+        self.positionAccountBadge()
     }
 
     func close() {
@@ -160,8 +154,6 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.appearanceObservation = nil
         self.accountBadgePanel.orderOut(nil)
         self.accountBadgePanel.close()
-        self.forecastBadgePanel.orderOut(nil)
-        self.forecastBadgePanel.close()
         self.panel.orderOut(nil)
         self.panel.close()
     }
@@ -170,7 +162,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         let choices = accounts.map { AccountBadgeInfo(account: $0) }
         let next = selected.map { AccountBadgeInfo(account: $0) }
         guard self.accountInfo != next || self.accountChoices != choices else {
-            self.positionBadges()
+            self.positionAccountBadge()
             return
         }
         self.accountInfo = next
@@ -178,7 +170,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.accountPopover?.close()
         self.accountBadgeView.account = next
         self.accountBadgePanel.invalidateCursorRects(for: self.accountBadgeView)
-        self.positionBadges()
+        self.positionAccountBadge()
     }
 
     func updateAccount(_ account: CodexAccount?) {
@@ -193,7 +185,9 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     func updateForecast(_ forecast: CodexResetForecast?) {
-        self.forecastBadgeView.update(forecast)
+        self.forecast = forecast
+        guard let popover = self.resetPopover, popover.isShown, self.detailKind == .quota else { return }
+        self.configureDetailContent(popover)
     }
 
     func orbView(_ view: OrbView, didDragBy delta: CGPoint) {
@@ -203,7 +197,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         frame.origin.x += delta.x
         frame.origin.y += delta.y
         self.panel.setFrameOrigin(frame.origin)
-        self.positionBadges()
+        self.positionAccountBadge()
     }
 
     func orbViewDidFinishDragging(_ view: OrbView) {
@@ -380,11 +374,11 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
             return
         }
         if let content = popover.contentViewController?.view as? QuotaDetailsView {
-            content.update(self.orbView.displayState.usage)
+            content.update(self.orbView.displayState.usage, forecast: self.forecast)
             popover.contentSize = content.frame.size
             return
         }
-        let content = QuotaDetailsView(usage: self.orbView.displayState.usage)
+        let content = QuotaDetailsView(usage: self.orbView.displayState.usage, forecast: self.forecast)
         content.onClose = { [weak popover] in popover?.performClose(nil) }
         let controller = NSViewController()
         controller.view = content
@@ -521,7 +515,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         panel.isExcludedFromWindowsMenu = true
     }
 
-    private func configure(_ panel: AccountBadgePanel, contentView: NSView) {
+    private func configure(_ panel: AccountBadgePanel, contentView: AccountBadgeView) {
         panel.contentView = contentView
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
@@ -590,16 +584,13 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.panel.setFrame(frame, display: false)
         self.orbView.bounds = CGRect(x: 0, y: 0, width: frame.width / self.capsuleScale,
                                     height: frame.height / self.capsuleScale)
-        self.positionBadges()
+        self.positionAccountBadge()
         self.orbView.needsDisplay = true
         self.panel.invalidateCursorRects(for: self.orbView)
         if display { self.panel.displayIfNeeded() }
     }
 
-    private func positionBadges() {
-        self.forecastBadgePanel.setFrame(ForecastBadgeView.frame(
-            capsuleFrame: self.panel.frame, scale: self.capsuleScale), display: true)
-        if self.panel.isVisible { self.forecastBadgePanel.orderFrontRegardless() }
+    private func positionAccountBadge() {
         guard self.accountInfo != nil else {
             self.accountBadgePanel.orderOut(nil)
             return
@@ -635,12 +626,10 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
             ?? NSScreen.screens.first
         guard let screen else { return frame }
 
-        let badgeInset = AccountBadgeLayout.badgeSize(scale: self.capsuleScale)
-            - AccountBadgeLayout.overlap + Layout.edgeInset
         let bounds = CGRect(
-            x: screen.frame.minX + badgeInset,
+            x: screen.frame.minX + Layout.edgeInset,
             y: screen.frame.minY,
-            width: screen.frame.width - 2 * badgeInset,
+            width: screen.frame.width - 2 * Layout.edgeInset,
             height: screen.frame.height - Layout.edgeInset)
         var result = frame
         result.origin.x = min(max(result.origin.x, bounds.minX), bounds.maxX - result.width)
