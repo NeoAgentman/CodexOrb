@@ -542,7 +542,8 @@ final class OrbView: NSView, NSMenuDelegate {
         context.setLineCap(.butt)
         for index in 0..<7 {
             let start = CGFloat.pi / 2 + CGFloat(index) * step
-            let sweep = step - gap
+            // Join the first and last segments visually at 12 o'clock.
+            let sweep = step - (index == 6 ? 0 : gap)
             context.setStrokeColor(tint.withAlphaComponent(0.18).cgColor)
             context.addArc(center: center, radius: rect.width / 2,
                            startAngle: start, endAngle: start + sweep, clockwise: false)
@@ -556,6 +557,14 @@ final class OrbView: NSView, NSMenuDelegate {
                                endAngle: start + sweep, clockwise: false)
                 context.strokePath()
             }
+        }
+        if remainingDays > 0 {
+            // Match the inner ring's round endpoint at 12 o'clock, keeping day gaps flat.
+            let capRadius: CGFloat = 1.5
+            context.setFillColor(tint.cgColor)
+            context.fillEllipse(in: CGRect(
+                x: center.x - capRadius, y: rect.maxY - capRadius,
+                width: capRadius * 2, height: capRadius * 2))
         }
         context.restoreGState()
     }
