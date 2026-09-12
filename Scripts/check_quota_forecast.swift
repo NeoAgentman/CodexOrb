@@ -25,6 +25,7 @@ struct QuotaForecastChecks {
         let view = QuotaDetailsView(usage: usage, forecast: forecast, openURL: { openedURLs.append($0) })
         view.appearance = NSAppearance(named: .aqua)
         let labels = Self.descendants(of: view).compactMap { ($0 as? NSTextField)?.stringValue }
+            + Self.descendants(of: view).compactMap { ($0 as? NSButton)?.title }
         for expected in ["额度详情", "全局重置预测", "25%", "模型预测", "Tibo承诺", "未知"] {
             precondition(labels.contains(expected), "Missing forecast UI label: \(expected)")
         }
@@ -46,12 +47,18 @@ struct QuotaForecastChecks {
             let fields = view.subviews.compactMap { $0 as? NSTextField }
             let buttons = Self.descendants(of: view).compactMap { $0 as? NSButton }
             let translated = fields.map(\.stringValue) + buttons.map(\.title)
-            precondition(buttons.count == 1 && buttons[0].title == L10n.text("Tibo承诺"),
-                         "Only Tibo commitment should open a link")
-            buttons[0].performClick(nil)
+            precondition(buttons.count == 2, "Forecast heading and Tibo commitment should open links")
+            let heading = buttons.first { $0.title == L10n.text("全局重置预测") }!
+            heading.performClick(nil)
+            precondition(openedURLs.last == URL(string: "https://codex-reset.com/"),
+                         "Forecast heading must open the forecast website")
+            let commitment = buttons.first { $0.title == L10n.text("Tibo承诺") }!
+            commitment.performClick(nil)
             precondition(openedURLs.last == signalURL, "Commitment click must open official_signal.url")
-            precondition(buttons[0].intrinsicContentSize.width <= buttons[0].frame.width + 1,
-                         "Clipped commitment link")
+            for button in buttons {
+                precondition(button.intrinsicContentSize.width <= button.frame.width + 1,
+                             "Clipped forecast link: \(button.title)")
+            }
             for expected in [L10n.text("Tibo承诺"), L10n.text("模型预测"), "83%", "45%"] {
                 precondition(translated.contains(expected), "Missing commitment label: \(expected)")
             }
@@ -86,8 +93,11 @@ struct QuotaForecastChecks {
         UserDefaults.standard.setVolatileDomain([AppLanguage.defaultsKey: AppLanguage.chinese.rawValue],
                                                forName: UserDefaults.argumentDomain)
         view.update(usage, forecast: forecast)
-        precondition(Self.descendants(of: view).allSatisfy { !($0 is NSButton) },
-                     "Missing link must remove the clickable control")
+        let remainingButtons = Self.descendants(of: view).compactMap { $0 as? NSButton }
+        precondition(remainingButtons.count == 1 && remainingButtons[0].title == L10n.text("全局重置预测"),
+                     "Missing official link must retain only the website heading link")
+        remainingButtons[0].performClick(nil)
+        precondition(openedURLs.last == URL(string: "https://codex-reset.com/"))
         precondition(view.frame.height == originalHeight, "Missing commitment must preserve compact layout")
         precondition(!Self.descendants(of: view).compactMap { ($0 as? NSTextField)?.stringValue }.contains("83%"),
                      "Expired commitment left a stale value")

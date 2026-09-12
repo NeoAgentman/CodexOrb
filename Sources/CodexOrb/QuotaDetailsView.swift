@@ -132,7 +132,16 @@ final class QuotaDetailsView: NSView {
         let separator = NSBox(frame: NSRect(x: 18, y: 86, width: 324, height: 2))
         separator.boxType = .separator
         self.addSubview(separator)
-        self.label(L10n.text("全局重置预测"), x: 18, y: 60, width: 160, size: 13, weight: .semibold)
+        let heading = ForecastLinkButton(title: L10n.text("全局重置预测"), target: self,
+                                         action: #selector(self.openForecastWebsite))
+        heading.isBordered = false
+        heading.alignment = .left
+        heading.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
+        heading.attributedTitle = NSAttributedString(string: heading.title, attributes: [
+            .font: heading.font!, .foregroundColor: NSColor.labelColor,
+        ])
+        heading.frame = NSRect(x: 18, y: 60, width: 160, height: 18)
+        self.addSubview(heading)
         self.forecastColumn(
             L10n.text("模型预测"),
             value: self.forecast?.probability24h,
@@ -185,6 +194,10 @@ final class QuotaDetailsView: NSView {
     @objc private func openOfficialSignal() {
         guard let url = self.forecast?.officialSignalURL else { return }
         self.openURL(url)
+    }
+
+    @objc private func openForecastWebsite() {
+        self.openURL(URL(string: "https://codex-reset.com/")!)
     }
 
     private func quotaRow(_ title: String, quota: CodexQuotaWindow, y: CGFloat) {
