@@ -62,6 +62,9 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private var accountInfo: AccountBadgeInfo?
     private var accountChoices: [AccountBadgeInfo] = []
     private var forecast: CodexResetForecast?
+    private var hadCommitment: Bool?
+    private let commitmentBubble = CommitmentBubble()
+    private let commitmentNoticeDuration: Duration
     private var resizeStartFrame: CGRect?
     private var resizeEdge: CapsuleGeometry.Edge = []
     private enum DetailKind { case resets, quota, tokens }
@@ -76,8 +79,9 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private var hoverDismissTask: Task<Void, Never>?
     private var appearanceObservation: NSKeyValueObservation?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, commitmentNoticeDuration: Duration = .seconds(6)) {
         self.defaults = defaults
+        self.commitmentNoticeDuration = commitmentNoticeDuration
         self.capsuleScale = CapsuleGeometry.scale(CGFloat(defaults.double(forKey: DefaultsKey.scale)))
         self.orbView = OrbView(frame: CGRect(origin: .zero, size: Layout.collapsedSize))
         self.accountBadgeView = AccountBadgeView(frame: CGRect(
@@ -102,11 +106,19 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         super.init()
 
         self.orbView.delegate = self
+        self.commitmentBubble.onActivate = { [weak self] in
+            guard let self else { return }
+            self.commitmentBubble.dismiss()
+            // A notification click opens quota details; it must not toggle an open card closed.
+            guard self.detailKind != .quota || self.resetPopover?.isShown != true else { return }
+            self.showDetails(.quota, from: self.orbView)
+        }
         self.appearanceObservation = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
             Task { @MainActor [weak self] in
                 // Popovers retain a separate appearance, including while already open.
                 self?.resetPopover?.appearance = NSApp.effectiveAppearance
                 self?.accountPopover?.appearance = NSApp.effectiveAppearance
+                self?.commitmentBubble.appearance = NSApp.effectiveAppearance
             }
         }
         self.configure(self.panel, contentView: self.orbView)
@@ -124,6 +136,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     func reloadLanguage() {
+        self.commitmentBubble.dismiss()
         self.resetPopover?.close()
         self.accountPopover?.close()
         // Reassigning refreshes both the drawing and accessibility description.
@@ -146,6 +159,8 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     func close() {
+        self.commitmentBubble.dismiss()
+        self.commitmentBubble.close()
         self.resetPopover?.close()
         self.accountPopover?.close()
         self.hoverDismissTask?.cancel()
@@ -186,6 +201,18 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
 
     func updateForecast(_ forecast: CodexResetForecast?) {
         self.forecast = forecast
+        // Only successful snapshots establish presence. The first is a baseline,
+        // and a missing refresh result must never look like a removed commitment.
+        if let forecast {
+            let percent = forecast.commitmentPercent.flatMap { (1...100).contains($0) ? $0 : nil }
+            if self.hadCommitment == false, percent != nil, self.panel.isVisible {
+                self.commitmentBubble.show(beside: self.panel,
+                                           duration: self.commitmentNoticeDuration)
+            } else if percent == nil {
+                self.commitmentBubble.dismiss()
+            }
+            self.hadCommitment = percent != nil
+        }
         guard let popover = self.resetPopover, popover.isShown, self.detailKind == .quota else { return }
         self.configureDetailContent(popover)
     }
@@ -276,6 +303,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
 
     private func showDetails(_ kind: DetailKind, from view: OrbView) {
         guard view === self.orbView else { return }
+        self.commitmentBubble.dismiss()
         if let popover = self.resetPopover, popover.isShown {
             let sameKind = self.detailKind == kind
             popover.close()
@@ -313,6 +341,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     private func showAccountDetails() {
+        self.commitmentBubble.dismiss()
         self.onAccountListRefresh?()
         guard let accountInfo else { return }
         self.resetPopover?.close()
@@ -591,6 +620,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     private func positionAccountBadge() {
+        if self.commitmentBubble.isVisible { self.commitmentBubble.reposition(beside: self.panel) }
         guard self.accountInfo != nil else {
             self.accountBadgePanel.orderOut(nil)
             return

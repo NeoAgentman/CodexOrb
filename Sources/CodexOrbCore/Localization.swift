@@ -103,6 +103,7 @@ public enum L10n {
         "48 小时内": "By 48 hours",
         "置信度：{0}": "Confidence: {0}",
         "Tibo承诺": "Tibo commitment",
+        "新的Tibo重置": "New Tibo reset",
         "5 小时剩余额度": "5 hour usage limit",
         "5 小时重置剩余时间": "5-hour reset countdown",
         "周剩余额度": "weekly usage limit",
