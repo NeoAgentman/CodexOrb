@@ -20,6 +20,28 @@ enum ForecastChecks {
         try self.expect(forecast.probability24h == 25, "rounded 24-hour forecast")
         try self.expect(forecast.probability48h == 45, "rounded 48-hour forecast")
         try self.expect(forecast.confidence == "low", "forecast confidence")
+        try self.expect(forecast.commitmentPercent == nil, "missing commitment stays hidden")
+
+        // The commitment and horizon probabilities describe different signals.
+        let announced = """
+        {"updated_at":"2026-09-12T03:54:09.076Z","probabilities":{"rounded_24h":45,"rounded_48h":70,"commitment":0.83,"signal_percent":83},"confidence":"low"}
+        """
+        let commitment = try CodexResetForecastSource.parse(data: Data(announced.utf8))
+        try self.expect(commitment.commitmentPercent == 83, "Tibo commitment percent")
+        try self.expect(commitment.probability24h == 45 && commitment.probability48h == 70,
+                        "commitment must not replace horizon probabilities")
+        for value in ["null", "0"] {
+            let inactive = announced.replacingOccurrences(of: "\"commitment\":0.83", with: "\"commitment\":\(value)")
+            let parsed = try CodexResetForecastSource.parse(data: Data(inactive.utf8))
+            try self.expect(parsed.commitmentPercent == nil, "inactive commitment stays hidden despite signal score")
+        }
+        for value in ["-0.1", "1.1"] {
+            let invalid = announced.replacingOccurrences(of: "\"commitment\":0.83", with: "\"commitment\":\(value)")
+            do {
+                _ = try CodexResetForecastSource.parse(data: Data(invalid.utf8))
+                throw ForecastCheckFailure(message: "Invalid commitment was accepted: \(value)")
+            } catch CodexResetForecastError.invalidPayload { }
+        }
 
         let rawOnly = """
         {"updated_at":"2026-09-09T05:49:34Z","probabilities":{"raw_24h":0.274,"raw_48h":0.496},"confidence":"future-value"}
@@ -61,7 +83,7 @@ enum ForecastChecks {
             throw ForecastCheckFailure(message: "forecast HTTP failure was not surfaced")
         } catch CodexResetForecastError.httpStatus(503) { }
 
-        print("ForecastChecks passed: parsing, raw fallback, confidence fallback, timezone request and HTTP failure")
+        print("ForecastChecks passed: parsing, commitment visibility and validation, raw fallback, confidence fallback, timezone request and HTTP failure")
     }
 
     private static func expect(_ condition: @autoclosure () -> Bool, _ label: String) throws {

@@ -130,27 +130,20 @@ final class QuotaDetailsView: NSView {
         separator.boxType = .separator
         self.addSubview(separator)
         self.label(L10n.text("全局重置预测"), x: 18, y: 60, width: 160, size: 13, weight: .semibold)
-        let confidence = self.forecast?.confidence ?? L10n.text("未知")
-        self.label(
-            L10n.text("置信度：\(confidence)"),
-            x: 180,
-            y: 60,
-            width: 162,
-            size: 12,
-            weight: .semibold,
-            alignment: .right)
         self.forecastColumn(
-            L10n.text("24 小时内"),
+            L10n.text("模型预测"),
             value: self.forecast?.probability24h,
             x: 18)
         self.forecastColumn(
-            L10n.text("48 小时内"),
-            value: self.forecast?.probability48h,
-            x: 192)
+            L10n.text("Tibo承诺"),
+            value: self.forecast?.commitmentPercent,
+            x: 192,
+            emphasized: true)
     }
 
-    private func forecastColumn(_ title: String, value: Int?, x: CGFloat) {
+    private func forecastColumn(_ title: String, value: Int?, x: CGFloat, emphasized: Bool = false) {
         let width: CGFloat = 150
+        let color: NSColor = emphasized ? .systemOrange : .labelColor
         let valueText = value.map { "\($0)%" } ?? L10n.text("未知")
         self.label(
             title,
@@ -158,18 +151,21 @@ final class QuotaDetailsView: NSView {
             y: 31,
             width: 110,
             size: 12,
-            weight: .medium)
+            weight: emphasized ? .semibold : .medium,
+            color: color)
         self.label(
             valueText,
             x: x + 110,
             y: 31,
             width: 40,
-            size: 13,
-            weight: .regular,
-            alignment: .right)
-        let bar = QuotaDetailBar(frame: NSRect(x: x, y: 15, width: width, height: 7))
+            size: emphasized ? 14 : 13,
+            weight: emphasized ? .bold : .regular,
+            alignment: .right,
+            color: color)
+        let bar = QuotaDetailBar(frame: NSRect(x: x, y: emphasized ? 14 : 15,
+                                             width: width, height: emphasized ? 9 : 7))
         bar.fraction = value.map { CGFloat($0) / CGFloat(100) }
-        bar.tint = .controlAccentColor
+        bar.tint = emphasized ? .systemOrange : .controlAccentColor
         bar.setAccessibilityElement(true)
         bar.setAccessibilityRole(.progressIndicator)
         bar.setAccessibilityLabel(title)
@@ -216,8 +212,10 @@ final class QuotaDetailsView: NSView {
     }
 
     private func label(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat, size: CGFloat,
-                       weight: NSFont.Weight, alignment: NSTextAlignment = .left, height: CGFloat = 18) {
+                       weight: NSFont.Weight, alignment: NSTextAlignment = .left, height: CGFloat = 18,
+                       color: NSColor = .labelColor) {
         let label = NSTextField(labelWithString: text)
+        label.textColor = color
         label.font = .monospacedDigitSystemFont(ofSize: size, weight: weight)
         label.alignment = alignment
         label.frame = NSRect(x: x, y: y, width: width, height: height)

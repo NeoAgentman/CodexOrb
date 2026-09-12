@@ -99,9 +99,10 @@ public enum L10n {
 
         "额度详情": "Quota details",
         "全局重置预测": "Global reset forecast",
-        "24 小时内": "Within 24 hours",
+        "模型预测": "Model prediction",
         "48 小时内": "By 48 hours",
         "置信度：{0}": "Confidence: {0}",
+        "Tibo承诺": "Tibo commitment",
         "5 小时剩余额度": "5 hour usage limit",
         "5 小时重置剩余时间": "5-hour reset countdown",
         "周剩余额度": "weekly usage limit",

@@ -6,6 +6,9 @@ struct QuotaForecastChecks {
     @MainActor static func main() throws {
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.accessory)
+        UserDefaults.standard.setVolatileDomain([AppLanguage.defaultsKey: AppLanguage.chinese.rawValue],
+                                               forName: UserDefaults.argumentDomain)
+        defer { UserDefaults.standard.removeVolatileDomain(forName: UserDefaults.argumentDomain) }
 
         let usage = CodexUsage(
             windows: [
@@ -19,16 +22,64 @@ struct QuotaForecastChecks {
             confidence: "future-value",
             updatedAt: Date())
         let view = QuotaDetailsView(usage: usage, forecast: forecast)
+        view.appearance = NSAppearance(named: .aqua)
         let labels = Self.descendants(of: view).compactMap { ($0 as? NSTextField)?.stringValue }
-        for expected in ["额度详情", "全局重置预测", "25%", "45%", "24 小时内", "48 小时内", "置信度：future-value"] {
+        for expected in ["额度详情", "全局重置预测", "25%", "模型预测", "Tibo承诺", "未知"] {
             precondition(labels.contains(expected), "Missing forecast UI label: \(expected)")
         }
-        for forbidden in ["更新时间", "来源", "非个人额度", "实验性"] {
+        for forbidden in ["更新时间", "来源", "非个人额度", "实验性", "48 小时内", "45%", "置信度：future-value"] {
             precondition(!labels.contains(forbidden), "Unexpected forecast explanation in compact card: \(forbidden)")
         }
         precondition(view.frame.height > 227.2, "Forecast card did not make room for the compact section")
         let bars = Self.descendants(of: view).filter { !($0 is NSTextField) && !($0 is NSBox) }
         precondition(bars.count >= 6, "Expected two forecast bars in addition to four quota bars")
+        let originalHeight = view.frame.height
+        let committed = CodexResetForecast(probability24h: 45, probability48h: 70, confidence: "low",
+                                          updatedAt: Date(), commitmentPercent: 83)
+        for language in AppLanguage.allCases {
+            UserDefaults.standard.setVolatileDomain([AppLanguage.defaultsKey: language.rawValue],
+                                                   forName: UserDefaults.argumentDomain)
+            view.update(usage, forecast: committed)
+            view.layoutSubtreeIfNeeded()
+            let fields = Self.descendants(of: view).compactMap { $0 as? NSTextField }
+            let translated = fields.map(\.stringValue)
+            for expected in [L10n.text("Tibo承诺"), L10n.text("模型预测"), "83%", "45%"] {
+                precondition(translated.contains(expected), "Missing commitment label: \(expected)")
+            }
+            for forbidden in [L10n.text("48 小时内"), L10n.text("置信度：\("low")"), "70%"] {
+                precondition(!translated.contains(forbidden), "Removed forecast label: \(forbidden)")
+            }
+            precondition(view.frame.height == originalHeight, "Compact forecast height must remain unchanged")
+            for field in fields {
+                precondition(view.bounds.contains(field.frame), "Label outside card: \(field.stringValue)")
+                precondition(field.intrinsicContentSize.width <= field.frame.width + 1,
+                             "Clipped label: \(field.stringValue)")
+            }
+            let preview = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            preview.isReleasedWhenClosed = false
+            let canvas = NSView(frame: view.frame)
+            canvas.wantsLayer = true
+            canvas.layer?.backgroundColor = NSColor.white.cgColor
+            preview.contentView = canvas
+            let previewContent = QuotaDetailsView(usage: usage, forecast: committed)
+            previewContent.appearance = NSAppearance(named: .aqua)
+            canvas.addSubview(previewContent)
+            preview.orderFront(nil)
+            for child in Self.descendants(of: canvas) { child.needsDisplay = true }
+            preview.display()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            let bitmap = canvas.bitmapImageRepForCachingDisplay(in: canvas.bounds)!
+            canvas.cacheDisplay(in: canvas.bounds, to: bitmap)
+            try bitmap.representation(using: .png, properties: [:])!.write(
+                to: URL(fileURLWithPath: "/tmp/orb-forecast-\(language.rawValue).png"))
+            preview.close()
+        }
+        UserDefaults.standard.setVolatileDomain([AppLanguage.defaultsKey: AppLanguage.chinese.rawValue],
+                                               forName: UserDefaults.argumentDomain)
+        view.update(usage, forecast: forecast)
+        precondition(view.frame.height == originalHeight, "Missing commitment must preserve compact layout")
+        precondition(!Self.descendants(of: view).compactMap { ($0 as? NSTextField)?.stringValue }.contains("83%"),
+                     "Expired commitment left a stale value")
 
         let monthlyOnly = QuotaDetailsView(usage: CodexUsage(
             windows: [CodexQuotaWindow(kind: .monthly, usedPercent: 35, resetsAt: nil, resetDescription: nil)],
@@ -40,7 +91,7 @@ struct QuotaForecastChecks {
         }
         precondition(monthlyOnly.frame.height < 227.2,
                      "Sparse quota card retained the full four-row height")
-        print("Quota forecast UI checks passed: compact two-column probabilities and confidence")
+        print("Quota forecast UI checks passed: bilingual 24h and commitment, no clipping, fixed height, absent value fallback, no 48h or confidence")
     }
 
     @MainActor private static func descendants(of view: NSView) -> [NSView] {

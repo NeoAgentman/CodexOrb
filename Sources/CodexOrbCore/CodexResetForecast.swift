@@ -3,6 +3,7 @@ import Foundation
 public struct CodexResetForecast: Equatable, Sendable {
     public let probability24h: Int?
     public let probability48h: Int?
+    public let commitmentPercent: Int?
     /// Keep the API-provided value opaque so newly introduced server values
     /// can be displayed without an app update.
     public let confidence: String?
@@ -12,10 +13,12 @@ public struct CodexResetForecast: Equatable, Sendable {
         probability24h: Int?,
         probability48h: Int?,
         confidence: String?,
-        updatedAt: Date)
+        updatedAt: Date,
+        commitmentPercent: Int? = nil)
     {
         self.probability24h = probability24h
         self.probability48h = probability48h
+        self.commitmentPercent = commitmentPercent
         self.confidence = confidence
         self.updatedAt = updatedAt
     }
@@ -116,7 +119,10 @@ public struct CodexResetForecastSource: CodexResetForecastSourcing, Sendable {
                                                  raw: payload.probabilities.raw48h,
                                                  field: "48h"),
                 confidence: payload.confidence,
-                updatedAt: updatedAt)
+                updatedAt: updatedAt,
+                commitmentPercent: try Self.percent(rounded: nil,
+                                                    raw: payload.probabilities.commitment,
+                                                    field: "commitment").flatMap { $0 > 0 ? $0 : nil })
         } catch let error as CodexResetForecastError {
             throw error
         } catch {
@@ -144,12 +150,14 @@ public struct CodexResetForecastSource: CodexResetForecastSourcing, Sendable {
         let raw48h: Double?
         let rounded24h: Double?
         let rounded48h: Double?
+        let commitment: Double?
 
         private enum CodingKeys: String, CodingKey {
             case raw24h = "raw_24h"
             case raw48h = "raw_48h"
             case rounded24h = "rounded_24h"
             case rounded48h = "rounded_48h"
+            case commitment
         }
     }
 
