@@ -1,5 +1,6 @@
 import AppKit
 import CodexOrbCore
+import Darwin
 
 @MainActor
 protocol OrbViewDelegate: AnyObject {
@@ -106,7 +107,7 @@ final class OrbView: NSView, NSMenuDelegate {
 
     override func mouseExited(with event: NSEvent) {
         _ = event
-        if !self.isResizing { self.updateResizeCursor([]) }
+        if !self.isResizing { self.updateCursor([]) }
         self.updateHoveredContentRegion(nil)
         self.delegate?.orbView(self, didChangeHover: false)
     }
@@ -121,8 +122,13 @@ final class OrbView: NSView, NSMenuDelegate {
         for x in stride(from: self.bounds.minX, to: self.bounds.maxX, by: step) {
             for y in stride(from: self.bounds.minY, to: self.bounds.maxY, by: step) {
                 let rect = CGRect(x: x, y: y, width: step, height: step).intersection(self.bounds)
-                let edge = self.resizeEdge(at: CGPoint(x: rect.midX, y: rect.midY))
-                if !edge.isEmpty { self.addCursorRect(rect, cursor: self.resizeCursor(edge)) }
+                let point = CGPoint(x: rect.midX, y: rect.midY)
+                let edge = self.resizeEdge(at: point)
+                if !edge.isEmpty {
+                    self.addCursorRect(rect, cursor: self.resizeCursor(edge))
+                } else if self.contentRegion(at: point) != nil {
+                    self.addCursorRect(rect, cursor: .pointingHand)
+                }
             }
         }
     }
@@ -131,7 +137,7 @@ final class OrbView: NSView, NSMenuDelegate {
         guard !self.isResizing else { return }
         let point = self.convert(event.locationInWindow, from: nil)
         let edge = self.resizeEdge(at: point)
-        self.updateResizeCursor(edge)
+        self.updateCursor(edge, at: point)
         if edge.isEmpty {
             self.updateHoveredContentRegion(self.contentRegion(at: point))
             self.delegate?.orbView(self, didChangeHover: true)
@@ -141,7 +147,8 @@ final class OrbView: NSView, NSMenuDelegate {
     }
 
     override func cursorUpdate(with event: NSEvent) {
-        self.updateResizeCursor(self.resizeEdge(at: self.convert(event.locationInWindow, from: nil)))
+        let point = self.convert(event.locationInWindow, from: nil)
+        self.updateCursor(self.resizeEdge(at: point), at: point)
     }
 
     private func resizeCursor(_ edge: CapsuleGeometry.Edge) -> NSCursor {
@@ -149,12 +156,18 @@ final class OrbView: NSView, NSMenuDelegate {
         return edge.isEmpty ? .arrow : .resizeUpDown
     }
 
-    private func updateResizeCursor(_ edge: CapsuleGeometry.Edge) {
+    private func updateCursor(_ edge: CapsuleGeometry.Edge, at point: CGPoint? = nil) {
+        if point != nil || !edge.isEmpty { BackgroundCursorAccess.setEnabled(true) }
         if self.hoveredResizeEdge != edge {
             self.hoveredResizeEdge = edge
             self.needsDisplay = true
         }
-        self.resizeCursor(edge).set()
+        if edge.isEmpty, let point, self.contentRegion(at: point) != nil {
+            NSCursor.pointingHand.set()
+        } else {
+            self.resizeCursor(edge).set()
+        }
+        if point == nil && edge.isEmpty { BackgroundCursorAccess.setEnabled(false) }
     }
 
     private func screenLocation(of event: NSEvent) -> CGPoint {
@@ -164,7 +177,7 @@ final class OrbView: NSView, NSMenuDelegate {
     override func mouseDown(with event: NSEvent) {
         let edge = self.resizeEdge(at: self.convert(event.locationInWindow, from: nil))
         if !edge.isEmpty {
-            self.updateResizeCursor(edge)
+            self.updateCursor(edge)
             self.isResizing = true
             self.resizeStartLocation = self.screenLocation(of: event)
             self.delegate?.orbView(self, didBeginResizing: edge)
@@ -200,7 +213,8 @@ final class OrbView: NSView, NSMenuDelegate {
             self.isResizing = false
             self.resizeStartLocation = nil
             self.delegate?.orbViewDidFinishResizing(self)
-            self.updateResizeCursor(self.resizeEdge(at: self.convert(event.locationInWindow, from: nil)))
+            let point = self.convert(event.locationInWindow, from: nil)
+            self.updateCursor(self.resizeEdge(at: point), at: point)
             return
         }
         let location = self.convert(event.locationInWindow, from: nil)
@@ -652,5 +666,33 @@ final class OrbView: NSView, NSMenuDelegate {
 
     private var colors: CapsuleSurfaceColors {
         CapsuleSurfaceColors.resolved(for: self.effectiveAppearance)
+    }
+}
+
+/// Nonactivating panels cannot normally update the system cursor while another app is active.
+/// Resolve this private WindowServer compatibility hook dynamically so its absence does not
+/// prevent launch. Access is scoped to pointer entry/exit; no app activation or polling is used.
+@MainActor
+private enum BackgroundCursorAccess {
+    private typealias ConnectionID = @convention(c) () -> UInt32
+    private typealias SetProperty = @convention(c) (UInt32, UInt32, CFString, CFTypeRef) -> Int32
+    private static let connection: (id: UInt32, setProperty: SetProperty)? = {
+        guard let handle = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_LAZY | RTLD_LOCAL)
+        else { return nil }
+        guard let getID = dlsym(handle, "CGSMainConnectionID") ?? dlsym(handle, "_CGSDefaultConnection"),
+              let setProperty = dlsym(handle, "CGSSetConnectionProperty") else {
+            dlclose(handle)
+            return nil
+        }
+        return (unsafeBitCast(getID, to: ConnectionID.self)(), unsafeBitCast(setProperty, to: SetProperty.self))
+    }()
+    private static var isEnabled = false
+
+    static func setEnabled(_ enabled: Bool) {
+        guard enabled != self.isEnabled, let connection else { return }
+        let result = connection.setProperty(connection.id, connection.id,
+                                            "SetsCursorInBackground" as CFString,
+                                            enabled ? kCFBooleanTrue! : kCFBooleanFalse!)
+        if result == 0 { self.isEnabled = enabled }
     }
 }

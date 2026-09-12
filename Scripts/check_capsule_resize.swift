@@ -81,6 +81,30 @@ struct CapsuleResizeChecks {
         expect(defaults.double(forKey: "CodexOrb.capsuleScale") == 1.5, "Scale persisted")
         let probe = InteractionProbe()
         view.delegate = probe
+        let wasActive = NSApp.isActive
+        for point in [CGPoint(x: 30, y: 28), CGPoint(x: 75, y: 28), CGPoint(x: 130, y: 28)] {
+            let event = pointerEvent(.mouseMoved, view.convert(point, to: nil))
+            view.mouseMoved(with: event)
+            expect(NSCursor.current.isEqual(NSCursor.pointingHand), "Clickable region hand cursor")
+            NSCursor.arrow.set()
+            view.cursorUpdate(with: event)
+            expect(NSCursor.current.isEqual(NSCursor.pointingHand), "Cursor update preserves hand cursor")
+            // NSCursor.current alone can pass while an inactive panel still shows an arrow.
+            if let systemCursor = NSCursor.currentSystem {
+                expect(systemCursor.hotSpot == NSCursor.pointingHand.hotSpot
+                       && systemCursor.image.size == NSCursor.pointingHand.image.size,
+                       "Inactive panel must update the actual system cursor")
+            }
+            expect(NSApp.isActive == wasActive, "Cursor updates must not activate the app")
+        }
+        for (point, cursor) in [(CGPoint(x: 170, y: 28), NSCursor.resizeLeftRight),
+                                (CGPoint(x: 130, y: 51), NSCursor.resizeUpDown),
+                                (CGPoint(x: 110, y: 10), NSCursor.arrow)] {
+            view.cursorUpdate(with: pointerEvent(.mouseMoved, view.convert(point, to: nil)))
+            expect(NSCursor.current.isEqual(cursor), "Resize edges and empty area retain their cursors")
+        }
+        view.mouseExited(with: pointerEvent(.mouseMoved, .zero))
+        expect(NSCursor.current.isEqual(NSCursor.arrow), "Exiting content clears hand cursor")
         func click(_ point: CGPoint, drag: Bool = false) {
             let location = view.convert(point, to: nil)
             func event(_ type: NSEvent.EventType) -> NSEvent {
