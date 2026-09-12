@@ -23,6 +23,13 @@ final class QuotaDetailsView: NSView {
     private static let baseLogicalHeight: CGFloat = 252
     private static let baseRowCount = 2
     private static let rowHeight: CGFloat = 56
+    private static let forecastEmphasisTextColor = NSColor(
+        name: NSColor.Name("CodexOrbForecastEmphasisText")) { appearance in
+            let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return dark
+                ? .systemOrange
+                : NSColor(calibratedRed: 0.72, green: 0.30, blue: 0.02, alpha: 1)
+        }
 
     var onClose: (() -> Void)?
     private var usage: CodexUsage?
@@ -157,7 +164,7 @@ final class QuotaDetailsView: NSView {
     private func forecastColumn(_ title: String, value: Int?, x: CGFloat,
                                emphasized: Bool = false, missingValueKey: L10n.Message = "未知") {
         let width: CGFloat = 150
-        let color: NSColor = emphasized ? .systemOrange : .labelColor
+        let color: NSColor = emphasized ? Self.forecastEmphasisTextColor : .labelColor
         let valueText = value.map { "\($0)%" } ?? L10n.text(missingValueKey)
         if emphasized, self.forecast?.officialSignalURL != nil {
             let button = ForecastLinkButton(title: title, target: self, action: #selector(self.openOfficialSignal))
