@@ -26,13 +26,24 @@ struct QuotaForecastChecks {
         view.appearance = NSAppearance(named: .aqua)
         let labels = Self.descendants(of: view).compactMap { ($0 as? NSTextField)?.stringValue }
             + Self.descendants(of: view).compactMap { ($0 as? NSButton)?.title }
-        for expected in ["额度详情", "全局重置预测", "25%", "模型预测", "Tibo承诺", "未知"] {
+        for expected in ["额度详情", "全局重置预测", "25%", "模型预测", "Tibo承诺", "暂无"] {
             precondition(labels.contains(expected), "Missing forecast UI label: \(expected)")
         }
+        precondition(!labels.contains("未知"), "Missing Tibo commitment should use 暂无")
         for forbidden in ["更新时间", "来源", "非个人额度", "实验性", "48 小时内", "45%", "置信度：future-value"] {
             precondition(!labels.contains(forbidden), "Unexpected forecast explanation in compact card: \(forbidden)")
         }
         precondition(view.frame.height > 227.2, "Forecast card did not make room for the compact section")
+        let missingModel = CodexResetForecast(
+            probability24h: nil,
+            probability48h: nil,
+            confidence: nil,
+            updatedAt: Date())
+        view.update(usage, forecast: missingModel)
+        let missingModelLabels = Self.descendants(of: view).compactMap { ($0 as? NSTextField)?.stringValue }
+        precondition(missingModelLabels.contains("未知"), "Model prediction fallback should remain 未知")
+        precondition(missingModelLabels.contains("暂无"), "Missing Tibo commitment should use 暂无")
+        view.update(usage, forecast: forecast)
         let bars = Self.descendants(of: view).filter { !($0 is NSTextField) && !($0 is NSBox) }
         precondition(bars.count >= 6, "Expected two forecast bars in addition to four quota bars")
         let originalHeight = view.frame.height

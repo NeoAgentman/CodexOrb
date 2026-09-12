@@ -150,13 +150,15 @@ final class QuotaDetailsView: NSView {
             L10n.text("Tibo承诺"),
             value: self.forecast?.commitmentPercent,
             x: 192,
-            emphasized: true)
+            emphasized: true,
+            missingValueKey: "暂无")
     }
 
-    private func forecastColumn(_ title: String, value: Int?, x: CGFloat, emphasized: Bool = false) {
+    private func forecastColumn(_ title: String, value: Int?, x: CGFloat,
+                               emphasized: Bool = false, missingValueKey: L10n.Message = "未知") {
         let width: CGFloat = 150
         let color: NSColor = emphasized ? .systemOrange : .labelColor
-        let valueText = value.map { "\($0)%" } ?? L10n.text("未知")
+        let valueText = value.map { "\($0)%" } ?? L10n.text(missingValueKey)
         if emphasized, self.forecast?.officialSignalURL != nil {
             let button = ForecastLinkButton(title: title, target: self, action: #selector(self.openOfficialSignal))
             button.isBordered = false
