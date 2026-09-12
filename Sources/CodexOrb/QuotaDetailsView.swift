@@ -28,11 +28,14 @@ final class QuotaDetailsView: NSView {
     private var usage: CodexUsage?
     private var forecast: CodexResetForecast?
     private var countdownTask: Task<Void, Never>?
+    private let openURL: (URL) -> Void
     override var acceptsFirstResponder: Bool { true }
 
-    init(usage: CodexUsage?, forecast: CodexResetForecast? = nil) {
+    init(usage: CodexUsage?, forecast: CodexResetForecast? = nil,
+         openURL: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }) {
         self.usage = usage
         self.forecast = forecast
+        self.openURL = openURL
         let rowCount = Self.detailRows(for: usage).count
         let logicalHeight = Self.contentHeight(rowCount: rowCount)
         super.init(frame: NSRect(x: 0, y: 0,
@@ -145,14 +148,20 @@ final class QuotaDetailsView: NSView {
         let width: CGFloat = 150
         let color: NSColor = emphasized ? .systemOrange : .labelColor
         let valueText = value.map { "\($0)%" } ?? L10n.text("未知")
-        self.label(
-            title,
-            x: x,
-            y: 31,
-            width: 110,
-            size: 12,
-            weight: emphasized ? .semibold : .medium,
-            color: color)
+        if emphasized, self.forecast?.officialSignalURL != nil {
+            let button = ForecastLinkButton(title: title, target: self, action: #selector(self.openOfficialSignal))
+            button.isBordered = false
+            button.alignment = .left
+            button.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+            button.attributedTitle = NSAttributedString(string: title, attributes: [
+                .font: button.font!, .foregroundColor: color,
+            ])
+            button.frame = NSRect(x: x, y: 31, width: 110, height: 18)
+            self.addSubview(button)
+        } else {
+            self.label(title, x: x, y: 31, width: 110, size: 12,
+                       weight: emphasized ? .semibold : .medium, color: color)
+        }
         self.label(
             valueText,
             x: x + 110,
@@ -171,6 +180,11 @@ final class QuotaDetailsView: NSView {
         bar.setAccessibilityLabel(title)
         bar.setAccessibilityValue(valueText)
         self.addSubview(bar)
+    }
+
+    @objc private func openOfficialSignal() {
+        guard let url = self.forecast?.officialSignalURL else { return }
+        self.openURL(url)
     }
 
     private func quotaRow(_ title: String, quota: CodexQuotaWindow, y: CGFloat) {
@@ -220,6 +234,13 @@ final class QuotaDetailsView: NSView {
         label.alignment = alignment
         label.frame = NSRect(x: x, y: y, width: width, height: height)
         self.addSubview(label)
+    }
+}
+
+@MainActor
+private final class ForecastLinkButton: NSButton {
+    override func resetCursorRects() {
+        self.addCursorRect(self.bounds, cursor: .pointingHand)
     }
 }
 

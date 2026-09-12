@@ -4,6 +4,7 @@ public struct CodexResetForecast: Equatable, Sendable {
     public let probability24h: Int?
     public let probability48h: Int?
     public let commitmentPercent: Int?
+    public let officialSignalURL: URL?
     /// Keep the API-provided value opaque so newly introduced server values
     /// can be displayed without an app update.
     public let confidence: String?
@@ -14,11 +15,13 @@ public struct CodexResetForecast: Equatable, Sendable {
         probability48h: Int?,
         confidence: String?,
         updatedAt: Date,
-        commitmentPercent: Int? = nil)
+        commitmentPercent: Int? = nil,
+        officialSignalURL: URL? = nil)
     {
         self.probability24h = probability24h
         self.probability48h = probability48h
         self.commitmentPercent = commitmentPercent
+        self.officialSignalURL = officialSignalURL
         self.confidence = confidence
         self.updatedAt = updatedAt
     }
@@ -122,7 +125,8 @@ public struct CodexResetForecastSource: CodexResetForecastSourcing, Sendable {
                 updatedAt: updatedAt,
                 commitmentPercent: try Self.percent(rounded: nil,
                                                     raw: payload.probabilities.commitment,
-                                                    field: "commitment").flatMap { $0 > 0 ? $0 : nil })
+                                                    field: "commitment").flatMap { $0 > 0 ? $0 : nil },
+                officialSignalURL: Self.signalURL(payload.officialSignal?.url))
         } catch let error as CodexResetForecastError {
             throw error
         } catch {
@@ -138,11 +142,26 @@ public struct CodexResetForecastSource: CodexResetForecastSourcing, Sendable {
         let updatedAt: String
         let probabilities: Probabilities
         let confidence: String?
+        let officialSignal: OfficialSignal?
 
         private enum CodingKeys: String, CodingKey {
             case updatedAt = "updated_at"
+            case officialSignal = "official_signal"
             case probabilities, confidence
         }
+    }
+
+    private struct OfficialSignal: Decodable {
+        let url: String?
+    }
+
+    private static func signalURL(_ value: String?) -> URL? {
+        guard let value, let url = URL(string: value),
+              url.scheme?.lowercased() == "https",
+              let host = url.host?.lowercased(),
+              ["x.com", "www.x.com", "twitter.com", "www.twitter.com"].contains(host),
+              url.user == nil, url.password == nil else { return nil }
+        return url
     }
 
     private struct Probabilities: Decodable {

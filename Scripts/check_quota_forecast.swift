@@ -21,7 +21,8 @@ struct QuotaForecastChecks {
             probability48h: 45,
             confidence: "future-value",
             updatedAt: Date())
-        let view = QuotaDetailsView(usage: usage, forecast: forecast)
+        var openedURLs: [URL] = []
+        let view = QuotaDetailsView(usage: usage, forecast: forecast, openURL: { openedURLs.append($0) })
         view.appearance = NSAppearance(named: .aqua)
         let labels = Self.descendants(of: view).compactMap { ($0 as? NSTextField)?.stringValue }
         for expected in ["额度详情", "全局重置预测", "25%", "模型预测", "Tibo承诺", "未知"] {
@@ -34,15 +35,23 @@ struct QuotaForecastChecks {
         let bars = Self.descendants(of: view).filter { !($0 is NSTextField) && !($0 is NSBox) }
         precondition(bars.count >= 6, "Expected two forecast bars in addition to four quota bars")
         let originalHeight = view.frame.height
+        let signalURL = URL(string: "https://x.com/thsottiaux/status/2098612714704891959")!
         let committed = CodexResetForecast(probability24h: 45, probability48h: 70, confidence: "low",
-                                          updatedAt: Date(), commitmentPercent: 83)
+                                          updatedAt: Date(), commitmentPercent: 83, officialSignalURL: signalURL)
         for language in AppLanguage.allCases {
             UserDefaults.standard.setVolatileDomain([AppLanguage.defaultsKey: language.rawValue],
                                                    forName: UserDefaults.argumentDomain)
             view.update(usage, forecast: committed)
             view.layoutSubtreeIfNeeded()
-            let fields = Self.descendants(of: view).compactMap { $0 as? NSTextField }
-            let translated = fields.map(\.stringValue)
+            let fields = view.subviews.compactMap { $0 as? NSTextField }
+            let buttons = Self.descendants(of: view).compactMap { $0 as? NSButton }
+            let translated = fields.map(\.stringValue) + buttons.map(\.title)
+            precondition(buttons.count == 1 && buttons[0].title == L10n.text("Tibo承诺"),
+                         "Only Tibo commitment should open a link")
+            buttons[0].performClick(nil)
+            precondition(openedURLs.last == signalURL, "Commitment click must open official_signal.url")
+            precondition(buttons[0].intrinsicContentSize.width <= buttons[0].frame.width + 1,
+                         "Clipped commitment link")
             for expected in [L10n.text("Tibo承诺"), L10n.text("模型预测"), "83%", "45%"] {
                 precondition(translated.contains(expected), "Missing commitment label: \(expected)")
             }
@@ -77,6 +86,8 @@ struct QuotaForecastChecks {
         UserDefaults.standard.setVolatileDomain([AppLanguage.defaultsKey: AppLanguage.chinese.rawValue],
                                                forName: UserDefaults.argumentDomain)
         view.update(usage, forecast: forecast)
+        precondition(Self.descendants(of: view).allSatisfy { !($0 is NSButton) },
+                     "Missing link must remove the clickable control")
         precondition(view.frame.height == originalHeight, "Missing commitment must preserve compact layout")
         precondition(!Self.descendants(of: view).compactMap { ($0 as? NSTextField)?.stringValue }.contains("83%"),
                      "Expired commitment left a stale value")
@@ -91,7 +102,7 @@ struct QuotaForecastChecks {
         }
         precondition(monthlyOnly.frame.height < 227.2,
                      "Sparse quota card retained the full four-row height")
-        print("Quota forecast UI checks passed: bilingual 24h and commitment, no clipping, fixed height, absent value fallback, no 48h or confidence")
+        print("Quota forecast UI checks passed: bilingual model and commitment, official link click, missing link fallback, no clipping, fixed height")
     }
 
     @MainActor private static func descendants(of view: NSView) -> [NSView] {

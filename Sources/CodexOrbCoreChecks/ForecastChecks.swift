@@ -21,13 +21,26 @@ enum ForecastChecks {
         try self.expect(forecast.probability48h == 45, "rounded 48-hour forecast")
         try self.expect(forecast.confidence == "low", "forecast confidence")
         try self.expect(forecast.commitmentPercent == nil, "missing commitment stays hidden")
+        try self.expect(forecast.officialSignalURL == nil, "missing signal URL")
 
         // The commitment and horizon probabilities describe different signals.
         let announced = """
-        {"updated_at":"2026-09-12T03:54:09.076Z","probabilities":{"rounded_24h":45,"rounded_48h":70,"commitment":0.83,"signal_percent":83},"confidence":"low"}
+        {"updated_at":"2026-09-12T03:54:09.076Z","probabilities":{"rounded_24h":45,"rounded_48h":70,"commitment":0.83,"signal_percent":83},"confidence":"low","official_signal":{"url":"https://x.com/thsottiaux/status/2098612714704891959"}}
         """
         let commitment = try CodexResetForecastSource.parse(data: Data(announced.utf8))
         try self.expect(commitment.commitmentPercent == 83, "Tibo commitment percent")
+        let signalURL = "https://x.com/thsottiaux/status/2098612714704891959"
+        try self.expect(commitment.officialSignalURL?.absoluteString == signalURL, "official signal URL")
+        for invalidURL in ["", "/relative", "file:///tmp/post", "javascript:alert(1)",
+                           "https://x.com.example.org/post", "https://user@x.com/post"] {
+            let response = announced.replacingOccurrences(of: signalURL, with: invalidURL)
+            let parsed = try CodexResetForecastSource.parse(data: Data(response.utf8))
+            try self.expect(parsed.officialSignalURL == nil && parsed.commitmentPercent == 83,
+                            "invalid link must not hide forecast data")
+        }
+        let nullSignal = announced.replacingOccurrences(of: "{\"url\":\"\(signalURL)\"}", with: "null")
+        let withoutSignal = try CodexResetForecastSource.parse(data: Data(nullSignal.utf8))
+        try self.expect(withoutSignal.officialSignalURL == nil, "null official signal")
         try self.expect(commitment.probability24h == 45 && commitment.probability48h == 70,
                         "commitment must not replace horizon probabilities")
         for value in ["null", "0"] {
