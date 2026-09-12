@@ -26,6 +26,6 @@ with tempfile.TemporaryDirectory(prefix='codexorb-ui-check-') as directory:
         output = str(Path(directory)/name)
         subprocess.run(['swiftc', '-swift-version', '6', '-parse-as-library', '-I', str(bin_dir/'Modules')]
             + [str(Path('Sources/CodexOrb')/s) for s in sources]
-            + [str(Path('Scripts')/check)] + objects + ['-o', output], check=True)
+            + ['Sources/CodexOrb/BackgroundCursorAccess.swift', str(Path('Scripts')/check)] + objects + ['-o', output], check=True)
         subprocess.run([output], check=True)
 PY

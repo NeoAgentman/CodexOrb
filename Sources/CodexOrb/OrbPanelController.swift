@@ -553,7 +553,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         panel.isMovable = false
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        panel.acceptsMouseMovedEvents = false
+        panel.acceptsMouseMovedEvents = true
         panel.becomesKeyOnlyIfNeeded = false
         panel.isExcludedFromWindowsMenu = true
     }

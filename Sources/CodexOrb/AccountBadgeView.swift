@@ -70,6 +70,7 @@ final class AccountBadgeView: NSView {
         didSet {
             self.needsDisplay = true
             self.updateAccessibility()
+            if self.isHovered { self.updateCursor() }
         }
     }
     var onActivate: (() -> Void)?
@@ -82,18 +83,48 @@ final class AccountBadgeView: NSView {
         super.updateTrackingAreas()
         self.trackingAreas.forEach { self.removeTrackingArea($0) }
         self.addTrackingArea(NSTrackingArea(rect: .zero,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+            options: [.mouseEnteredAndExited, .mouseMoved, .cursorUpdate, .activeAlways, .inVisibleRect], owner: self))
     }
 
     override func mouseEntered(with event: NSEvent) {
         self.isHovered = true
+        self.updateCursor()
         self.needsDisplay = true
     }
 
     override func mouseExited(with event: NSEvent) {
         self.isHovered = false
         self.isPressed = false
+        self.updateCursor()
         self.needsDisplay = true
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        self.isHovered = self.bounds.contains(self.convert(event.locationInWindow, from: nil))
+        self.updateCursor()
+        self.needsDisplay = true
+    }
+
+    override func cursorUpdate(with event: NSEvent) {
+        self.mouseMoved(with: event)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if self.window == nil, self.isHovered {
+            self.isHovered = false
+            self.updateCursor()
+        }
+    }
+
+    private func updateCursor() {
+        if self.isHovered, self.account != nil {
+            BackgroundCursorAccess.setEnabled(true)
+            NSCursor.pointingHand.set()
+        } else {
+            NSCursor.arrow.set()
+            BackgroundCursorAccess.setEnabled(false)
+        }
     }
 
     override func accessibilityPerformPress() -> Bool {
