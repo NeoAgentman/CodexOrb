@@ -340,13 +340,14 @@ final class OrbView: NSView, NSMenuDelegate {
         self.drawText(
             topModelText,
             in: CGRect(
-                x: tokenRect.minX,
+                x: tokenRect.minX + 8,
                 y: capsule.minY + 2,
-                width: tokenRect.width,
+                width: tokenRect.width - 16,
                 height: 14),
             font: .systemFont(ofSize: 11, weight: .medium),
             color: colors.secondaryText,
-            alignment: .center)
+            alignment: .center,
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
 
         self.drawResetStack(colors: colors)
         context.restoreGState()
@@ -594,18 +595,23 @@ final class OrbView: NSView, NSMenuDelegate {
         in rect: CGRect,
         font: NSFont,
         color: NSColor,
-        alignment: NSTextAlignment)
+        alignment: NSTextAlignment,
+        options: NSString.DrawingOptions = [])
     {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = alignment
         paragraph.lineBreakMode = .byTruncatingTail
-        (text as NSString).draw(
-            in: rect,
-            withAttributes: [
-                .font: font,
-                .foregroundColor: color,
-                .paragraphStyle: paragraph,
-            ])
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: color,
+            .paragraphStyle: paragraph,
+        ]
+        if options.isEmpty {
+            // Preserve the original vertical placement for all existing labels.
+            (text as NSString).draw(in: rect, withAttributes: attributes)
+        } else {
+            (text as NSString).draw(with: rect, options: options, attributes: attributes, context: nil)
+        }
     }
 
     private func meterColor(for remaining: Double?) -> NSColor {
