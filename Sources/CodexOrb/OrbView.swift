@@ -396,9 +396,7 @@ final class OrbView: NSView, NSMenuDelegate {
             let rect = self.quotaDetailsRect
             highlight = (rect, rect.height / 2)
         case .tokens:
-            let rect = self.tokenConsumptionRect
-            highlight = (CGRect(x: rect.minX - 4, y: rect.minY - 8,
-                                width: rect.width + 8, height: rect.height + 13), 10)
+            highlight = (self.tokenHighlightRect, 10)
         case .resets:
             let rect = self.resetCardsRect.insetBy(dx: 1, dy: 1)
             highlight = (rect, 9)
@@ -447,9 +445,22 @@ final class OrbView: NSView, NSMenuDelegate {
             height: 23)
     }
 
+    var tokenInteractionRect: CGRect {
+        let rect = self.tokenConsumptionRect
+        let left = max(rect.minX, self.resetCardsRect.maxX + 2)
+        let bottom = self.bounds.minY + 5
+        return CGRect(x: left, y: bottom, width: max(0, rect.maxX - left),
+                      height: rect.maxY + 5 - bottom)
+    }
+
+    var tokenHighlightRect: CGRect {
+        let rect = self.tokenInteractionRect
+        return rect
+    }
+
     private func tokenConsumptionContains(_ point: CGPoint) -> Bool {
         guard self.bounds.width >= Self.minimumExpandedHitWidth else { return false }
-        return self.tokenConsumptionRect.contains(point)
+        return self.tokenInteractionRect.contains(point)
     }
 
     private func drawResetStack(colors: CapsuleSurfaceColors) {

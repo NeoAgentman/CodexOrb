@@ -82,7 +82,7 @@ struct CapsuleResizeChecks {
         let probe = InteractionProbe()
         view.delegate = probe
         let wasActive = NSApp.isActive
-        for point in [CGPoint(x: 30, y: 28), CGPoint(x: 75, y: 28), CGPoint(x: 130, y: 28)] {
+        for point in [CGPoint(x: 30, y: 28), CGPoint(x: 75, y: 28), CGPoint(x: 130, y: 28), CGPoint(x: 130, y: 10)] {
             let event = pointerEvent(.mouseMoved, view.convert(point, to: nil))
             view.mouseMoved(with: event)
             expect(NSCursor.current.isEqual(NSCursor.pointingHand), "Clickable region hand cursor")
@@ -99,7 +99,7 @@ struct CapsuleResizeChecks {
         }
         for (point, cursor) in [(CGPoint(x: 170, y: 28), NSCursor.resizeLeftRight),
                                 (CGPoint(x: 130, y: 51), NSCursor.resizeUpDown),
-                                (CGPoint(x: 110, y: 10), NSCursor.arrow)] {
+                                (CGPoint(x: 101, y: 10), NSCursor.arrow)] {
             view.cursorUpdate(with: pointerEvent(.mouseMoved, view.convert(point, to: nil)))
             expect(NSCursor.current.isEqual(cursor), "Resize edges and empty area retain their cursors")
         }
@@ -123,6 +123,26 @@ struct CapsuleResizeChecks {
         expect(probe.cards == 1, "Scaled card click")
         click(CGPoint(x: 130, y: 28))
         expect(probe.tokenDetails == 1, "Scaled token single click opens token details")
+        expect(!view.tokenInteractionRect.intersects(view.resetCardsRect),
+               "Token hit area must not overlap reset cards")
+        expect(!view.tokenHighlightRect.intersects(view.resetCardsRect),
+               "Token highlight must not overlap reset cards")
+        click(CGPoint(x: 98, y: 28))
+        expect(probe.cards == 2 && probe.tokenDetails == 1,
+               "Right edge of reset cards must open reset cards only")
+        click(CGPoint(x: 101, y: 28))
+        expect(probe.cards == 2 && probe.tokenDetails == 1,
+               "Gap between reset cards and tokens must not open either")
+        click(CGPoint(x: 103, y: 28))
+        expect(probe.cards == 2 && probe.tokenDetails == 2,
+               "Token left edge must open token details only")
+        expect(view.tokenHighlightRect == view.tokenInteractionRect,
+               "Token number and model must share their highlight and hit region")
+        expect(view.tokenHighlightRect.contains(CGPoint(x: 130, y: 10)),
+               "Highlight must cover the model label")
+        click(CGPoint(x: 130, y: 10))
+        expect(probe.tokenDetails == 3 && probe.cards == 2,
+               "Model label click must open token details")
         click(CGPoint(x: 30, y: 28))
         expect(probe.quotaDetails == 1, "Scaled ring single click opens quota details")
         view.delegate = controller
