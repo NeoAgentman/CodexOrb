@@ -51,6 +51,7 @@ struct AppSettings: Equatable {
     var capsuleExpandedByDefault: Bool = false
     var provider: String { "codex" }
     var refreshInterval: TimeInterval
+    var automaticReset = AutomaticResetPolicy()
 
     static func load(from defaults: UserDefaults = .standard) -> AppSettings {
         let store = CodexAccountStore()
@@ -65,7 +66,12 @@ struct AppSettings: Equatable {
             appearance: defaults.string(forKey: DefaultsKey.appearance).flatMap(AppAppearance.init(rawValue:)) ?? .system,
             accountHome: accountHome,
             capsuleExpandedByDefault: defaults.bool(forKey: DefaultsKey.capsuleExpandedByDefault),
-            refreshInterval: validInterval)
+            refreshInterval: validInterval,
+            automaticReset: AutomaticResetPolicy(
+                enabled: defaults.bool(forKey: "CodexOrb.automaticReset.enabled"),
+                hoursBeforeExpiration: (1...12).contains(defaults.integer(forKey: "CodexOrb.automaticReset.hours"))
+                    ? defaults.integer(forKey: "CodexOrb.automaticReset.hours") : 6,
+                allAccounts: defaults.bool(forKey: "CodexOrb.automaticReset.allAccounts")))
     }
 
     func save(to defaults: UserDefaults = .standard) {
@@ -79,6 +85,9 @@ struct AppSettings: Equatable {
         defaults.set(self.capsuleExpandedByDefault, forKey: DefaultsKey.capsuleExpandedByDefault)
         defaults.removeObject(forKey: "CodexOrb.quotaProvider")
         defaults.set(self.refreshInterval, forKey: DefaultsKey.refreshInterval)
+        defaults.set(automaticReset.enabled, forKey: "CodexOrb.automaticReset.enabled")
+        defaults.set(automaticReset.hoursBeforeExpiration, forKey: "CodexOrb.automaticReset.hours")
+        defaults.set(automaticReset.allAccounts, forKey: "CodexOrb.automaticReset.allAccounts")
     }
 
 }

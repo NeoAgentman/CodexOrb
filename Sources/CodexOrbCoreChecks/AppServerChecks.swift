@@ -100,6 +100,102 @@ enum AppServerChecks {
         catch AppServerError.cardUnavailable { }
         try expect(try calls(stale).isEmpty, "stale card cannot consume")
 
+        // Automatic checks use the same offline peer, with account-specific live snapshots.
+        func automaticAccount(_ name: String, used: Double = 60, count: Int = 2) throws -> CodexAccount {
+            let value = try account(name)
+            let snapshot: [String: Any] = [
+                "used": used, "count": count,
+                "cards": [
+                    ["id": "later", "resetType": "codexRateLimits", "status": "available", "expiresAt": Date().addingTimeInterval(7200).timeIntervalSince1970],
+                    ["id": "earliest", "resetType": "codexRateLimits", "status": "available", "expiresAt": Date().addingTimeInterval(1800).timeIntervalSince1970],
+                ],
+            ]
+            try JSONSerialization.data(withJSONObject: snapshot).write(to: URL(fileURLWithPath: value.home).appendingPathComponent("automatic.json"))
+            return value
+        }
+        let automaticPolicy = AutomaticResetPolicy(enabled: true, hoursBeforeExpiration: 1)
+        let automaticA = try automaticAccount("automatic-A")
+        let automaticB = try automaticAccount("automatic-B")
+        let automaticAccounts = [automaticA, automaticA, automaticB]
+        try expect(AutomaticResetPolicy().accounts(from: automaticAccounts, selectedHome: automaticA.home).isEmpty, "disabled scope is empty")
+        try expect(automaticPolicy.accounts(from: automaticAccounts, selectedHome: nil).isEmpty, "no current account means no implicit fallback")
+        let selectedOnly = automaticPolicy.accounts(from: automaticAccounts, selectedHome: automaticA.home)
+        try expect(selectedOnly == [automaticA], "default scope is the selected account, deduplicated")
+        for current in selectedOnly { _ = try await service.consumeExpiring(account: current, policy: automaticPolicy) }
+        try expect(try calls(automaticA).count == 1 && calls(automaticB).isEmpty, "selected-only mode leaves other accounts untouched")
+        let usedCard = try String(contentsOf: URL(fileURLWithPath: automaticA.home).appendingPathComponent("credit-ids"), encoding: .utf8)
+        try expect(usedCard == "earliest\n", "automatic request names the earliest card explicitly")
+        let allPolicy = AutomaticResetPolicy(enabled: true, hoursBeforeExpiration: 1, allAccounts: true)
+        let all = allPolicy.accounts(from: automaticAccounts, selectedHome: nil)
+        try expect(all == [automaticA, automaticB], "all accounts mode works without a current selection")
+        for current in all { _ = try await service.consumeExpiring(account: current, policy: allPolicy) }
+        try expect(try calls(automaticA).count == 1 && calls(automaticB).count == 1, "fresh quota prevents another card after reset")
+        for (name, used, count) in [("auto-full", 0.0, 2), ("auto-partial", 60.0, 3)] {
+            let current = try automaticAccount(name, used: used, count: count)
+            let result = try await service.consumeExpiring(account: current, policy: automaticPolicy)
+            try expect(result == nil && (try calls(current)).isEmpty, "fresh ineligible quota or incomplete inventory never consumes")
+        }
+        let autoDisabled = try automaticAccount("auto-disabled")
+        _ = try await service.consumeExpiring(account: autoDisabled, policy: .init())
+        try expect(!fm.fileExists(atPath: URL(fileURLWithPath: autoDisabled.home).appendingPathComponent("pid").path), "disabled service does not start a process")
+        let autoDrop = try automaticAccount("auto-drop")
+        try mode(autoDrop, "drop")
+        do { _ = try await service.consumeExpiring(account: autoDrop, policy: automaticPolicy); throw AppServerError.protocolError }
+        catch AppServerError.disconnected { }
+        let autoPending = try store.read(autoDrop.identityKey)!
+        _ = try await service.consumeExpiring(account: autoDrop, policy: automaticPolicy)
+        try expect(try calls(autoDrop).count == 1 && store.read(autoDrop.identityKey) == autoPending, "uncertain result blocks automatic retries and further cards")
+        let autoRecovery = try await service.consume(account: autoDrop, creditID: autoPending.creditID)
+        try expect(autoRecovery.outcome == .alreadyRedeemed && (try calls(autoDrop)) == [autoPending.idempotencyKey, autoPending.idempotencyKey], "manual recovery reuses the automatic operation key")
+        let autoFailure = try automaticAccount("auto-failure")
+        try mode(autoFailure, "wrong-account")
+        let autoHealthy = try automaticAccount("auto-healthy")
+        for current in allPolicy.accounts(from: [autoFailure, autoHealthy], selectedHome: nil) {
+            do { _ = try await service.consumeExpiring(account: current, policy: allPolicy) }
+            catch AppServerError.accountChanged { }
+        }
+        try expect(try calls(autoFailure).isEmpty && calls(autoHealthy).count == 1, "one account failure does not prevent remaining accounts")
+        let autoReadback = try automaticAccount("auto-readback")
+        try mode(autoReadback, "refresh-failure")
+        let autoKnown = try await service.consumeExpiring(account: autoReadback, policy: automaticPolicy)
+        try expect(autoKnown?.outcome == .reset && autoKnown?.usage == nil, "automatic success stays known if readback fails")
+        _ = try await service.consumeExpiring(account: autoReadback, policy: automaticPolicy)
+        try expect(try calls(autoReadback).count == 1, "failed readback cannot consume the next card")
+        let autoNothing = try automaticAccount("auto-nothing")
+        try mode(autoNothing, "nothingToReset")
+        let nothing = try await service.consumeExpiring(account: autoNothing, policy: automaticPolicy)
+        try expect(nothing?.outcome == .nothingToReset && (try calls(autoNothing)).count == 1, "server ineligibility ends the attempt without a tight retry loop")
+        let autoChanged = try automaticAccount("auto-changed")
+        let changed = try await service.consumeExpiring(account: autoChanged, policy: automaticPolicy, expectedCreditID: "previously-shown-card")
+        try expect(changed == nil && (try calls(autoChanged)).isEmpty, "countdown never substitutes a different card")
+        let autoDismissed = try automaticAccount("auto-dismissed")
+        let dismissals = AutomaticResetDismissalStore(root: store.root)
+        try dismissals.dismiss(identity: autoDismissed.identityKey, creditID: "earliest", expiresAt: Date().addingTimeInterval(1800))
+        let restartedDismissals = AutomaticResetDismissalStore(root: store.root)
+        try expect(try restartedDismissals.contains(identity: autoDismissed.identityKey, creditID: "earliest"), "cancel persists across restart")
+        try expect(try !restartedDismissals.contains(identity: automaticB.identityKey, creditID: "earliest"), "cancel is account scoped")
+        try expect(try !restartedDismissals.contains(identity: autoDismissed.identityKey, creditID: "earliest", now: Date().addingTimeInterval(1801)), "expired cancellation is inactive")
+        let dismissed = try await service.consumeExpiring(account: autoDismissed, policy: automaticPolicy, expectedCreditID: "earliest")
+        try expect(dismissed == nil && (try calls(autoDismissed)).isEmpty, "cancelled card cannot be used automatically")
+        let manualAfterCancel = try await service.consume(account: autoDismissed, creditID: "earliest")
+        try expect(manualAfterCancel.outcome == .reset, "cancel does not prevent explicit manual consumption")
+        let afterCountdown = try automaticAccount("auto-after-countdown")
+        let before = try await service.fetch(account: afterCountdown)
+        try expect(automaticPolicy.candidate(in: before)?.id == "earliest", "candidate shown before countdown")
+        _ = try automaticAccount("auto-after-countdown", used: 0)
+        let noLongerEligible = try await service.consumeExpiring(account: afterCountdown, policy: automaticPolicy, expectedCreditID: "earliest")
+        try expect(noLongerEligible == nil && (try calls(afterCountdown)).isEmpty, "quota revalidated after countdown")
+        let autoCancel = try automaticAccount("auto-cancel")
+        try mode(autoCancel, "hang")
+        let autoTask = Task { try await service.consumeExpiring(account: autoCancel, policy: automaticPolicy) }
+        for _ in 0..<100 {
+            if fm.fileExists(atPath: URL(fileURLWithPath: autoCancel.home).appendingPathComponent("reading").path) { break }
+            try await Task.sleep(for: .milliseconds(2))
+        }
+        autoTask.cancel()
+        do { _ = try await autoTask.value; throw AppServerError.protocolError } catch is CancellationError { }
+        try expect(try calls(autoCancel).isEmpty && store.read(autoCancel.identityKey) == nil, "disable or scope change cancellation during preflight cannot consume")
+
         let waiting = try account("waiting")
         try mode(waiting, "hang")
         let task = Task { try await service.fetch(account: waiting) }
@@ -182,6 +278,7 @@ for line in sys.stdin:
     elif method == 'account/read': result = {'account':{'type':'chatgpt','email':'test@example.test','planType':'pro'}}
     elif method == 'account/rateLimits/read':
         read_count += 1
+        (home/'reading').write_text('1')
         if mode == 'hang':
             signal.signal(signal.SIGTERM, signal.SIG_IGN)
             time.sleep(60)
@@ -198,8 +295,15 @@ for line in sys.stdin:
                                 'secondary':{'usedPercent':0 if done else 60,'windowDurationMins':10080}},
                   'rateLimitResetCredits':{'availableCount':0 if done else 1,
                     'credits':[] if done else [{'id':'card-1','resetType':'codexRateLimits','status':'available','expiresAt':2100000000}]}}
+        if (home/'automatic.json').exists():
+            config = json.loads((home/'automatic.json').read_text())
+            result['rateLimits']['secondary']['resetsAt'] = time.time()+86400
+            if not done:
+                result['rateLimits']['secondary']['usedPercent'] = config['used']
+                result['rateLimitResetCredits'] = {'availableCount':config['count'], 'credits':config['cards']}
     elif method == 'account/rateLimitResetCredit/consume':
         key = obj['params']['idempotencyKey']
+        with (home/'credit-ids').open('a') as f: f.write(obj['params']['creditId']+'\n')
         with (home/'calls').open('a') as f: f.write(key+'\n')
         previous = (home/'redeemed').read_text() if (home/'redeemed').exists() else None
         if mode in ['noCredit','nothingToReset']: result = {'outcome':mode}

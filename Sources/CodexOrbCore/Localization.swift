@@ -56,6 +56,15 @@ public enum L10n {
     }
     public static func text(_ message: Message) -> String { message.rendered() }
     static let english: [String: String] = [
+        "自动使用重置卡": "Automatically use reset card",
+        "到期时间：{0}": "Expires: {0}",
+        "取消不使用": "Don't use",
+        "立即使用": "Use now",
+        "将在 {0} 秒后自动使用以上重置卡": "Using these reset cards in {0} seconds",
+        "自动使用即将到期的重置卡": "Automatically use expiring reset cards",
+        "应用到所有账号": "Apply to all accounts",
+        "到期前": "Before expiration",
+        "{0} 小时": "{0} hours",
         "外观": "Appearance",
         "跟随系统": "System",
         "浅色": "Light",

@@ -10,6 +10,7 @@ enum CodexOrbCoreChecks {
             return
         }
         try await ForecastChecks.run()
+        try AutomaticResetChecks.run()
         try await AppServerChecks.run()
         try LocalizationChecks.run()
         try await AccountChecks.run()

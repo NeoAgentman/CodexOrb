@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import CodexOrbCore
 
 @MainActor
@@ -15,6 +16,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var forecastTask: Task<Void, Never>?
     private var forecastRefreshID: UUID?
     private var resetTask: Task<Void, Never>?
+    private var automaticResetTimer: Timer?
+    private var automaticResetTask: Task<Void, Never>?
+    private var automaticResetGeneration = UUID()
+    private var terminating = false
+    private var sleeping = false
+    private lazy var automaticResetConfirmation = AutomaticResetConfirmation()
+    private let automaticResetDismissals = AutomaticResetDismissalStore()
+    private let automaticResetLogger = Logger(subsystem: "CodexOrb", category: "AutomaticReset")
 
     override init() {
         let settings = AppSettings.load()
@@ -51,10 +60,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.panelController.show()
         self.refresh()
         self.scheduleRefreshTimer()
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(didWake(_:)), name: NSWorkspace.didWakeNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(willSleep(_:)), name: NSWorkspace.willSleepNotification, object: nil)
+        self.scheduleAutomaticReset()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         _ = notification
+        self.terminating = true
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        self.automaticResetTimer?.invalidate()
+        self.automaticResetTask?.cancel()
         self.refreshTimer?.invalidate()
         self.refreshTask?.cancel()
         self.forecastTask?.cancel()
@@ -76,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.updateResetRecovery()
         self.updateAccountBadge()
         self.refreshForecast()
-        guard self.refreshID == nil, self.resetTask == nil else { return }
+        guard !terminating, self.refreshID == nil, self.resetTask == nil, automaticResetTask == nil else { return }
         let account = self.selectedManagedAccount
         guard let account else {
             self.lastUsage = nil
@@ -240,7 +258,115 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.lastUsage = nil
             self.panelController.update(.loading(previous: nil))
         }
+        self.scheduleAutomaticReset()
         self.refresh()
+    }
+
+    @objc private func willSleep(_ notification: Notification) {
+        sleeping = true
+        automaticResetGeneration = UUID()
+        automaticResetTask?.cancel()
+    }
+
+    @objc private func didWake(_ notification: Notification) {
+        sleeping = false
+        checkAutomaticReset()
+        refresh()
+    }
+
+    private func scheduleAutomaticReset() {
+        automaticResetGeneration = UUID()
+        automaticResetTask?.cancel()
+        automaticResetTimer?.invalidate()
+        automaticResetTimer = nil
+        guard settings.automaticReset.enabled, !terminating else { return }
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.checkAutomaticReset() }
+        }
+        timer.tolerance = 5
+        RunLoop.main.add(timer, forMode: .common)
+        automaticResetTimer = timer
+        checkAutomaticReset()
+    }
+
+    private func checkAutomaticReset() {
+        guard !terminating, !sleeping, settings.automaticReset.enabled,
+              automaticResetTask == nil, resetTask == nil else { return }
+        let policy = settings.automaticReset
+        let accounts = policy.accounts(from: CodexAccountStore().managedAccounts(), selectedHome: settings.accountHome)
+        guard !accounts.isEmpty else { return }
+        let generation = automaticResetGeneration
+        let oldRefresh = refreshTask
+        oldRefresh?.cancel()
+        refreshTask = nil
+        refreshID = nil
+        automaticResetTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.automaticResetTask = nil
+                self.updateResetRecovery()
+                if generation != self.automaticResetGeneration {
+                    self.checkAutomaticReset()
+                }
+                self.refresh()
+            }
+            // Drain the cancelled quota process before taking the same account lock.
+            await oldRefresh?.value
+            var candidates: [(account: CodexAccount, creditID: String, expiration: Date)] = []
+            for account in accounts {
+                guard !Task.isCancelled, !self.terminating,
+                      generation == self.automaticResetGeneration else { return }
+                guard CodexAccountStore().managedAccount(at: URL(fileURLWithPath: account.home))?.identityKey == account.identityKey else { continue }
+                do {
+                    guard try await CodexAccountService.shared.pending(account: account) == nil else { continue }
+                    let snapshot = try await CodexAccountService.shared.fetch(account: account)
+                    try Task.checkCancellation()
+                    guard let candidate = policy.candidate(in: snapshot), let creditID = candidate.id,
+                          let expiration = candidate.expiresAt,
+                          try !self.automaticResetDismissals.contains(identity: account.identityKey, creditID: creditID) else { continue }
+                    candidates.append((account, creditID, expiration))
+                } catch is CancellationError {
+                    return
+                } catch {
+                    self.automaticResetLogger.error("Automatic reset check failed for account: \(account.identityKey, privacy: .private)")
+                }
+            }
+            guard !candidates.isEmpty, !Task.isCancelled,
+                  generation == self.automaticResetGeneration else { return }
+            let decision = await self.automaticResetConfirmation.confirm(items: candidates.map {
+                .init(account: $0.account.label, expiresAt: $0.expiration)
+            })
+            guard !Task.isCancelled, generation == self.automaticResetGeneration else { return }
+            for candidate in candidates {
+                guard !Task.isCancelled, generation == self.automaticResetGeneration else { return }
+                let account = candidate.account
+                do {
+                    switch decision {
+                    case .interrupted: return
+                    case .cancel:
+                        try self.automaticResetDismissals.dismiss(identity: account.identityKey, creditID: candidate.creditID,
+                                                                 expiresAt: candidate.expiration)
+                        continue
+                    case .use: break
+                    }
+                    // The countdown authorizes only the listed cards, never replacement candidates.
+                    let result = try await CodexAccountService.shared.consumeExpiring(
+                        account: account, policy: policy, expectedCreditID: candidate.creditID)
+                    if let result {
+                        self.automaticResetLogger.info("Automatic reset result: \(result.outcome.rawValue, privacy: .public), account: \(account.identityKey, privacy: .private)")
+                        if !Task.isCancelled, self.isCurrentAccount(account), let usage = result.usage {
+                            self.apply(.quota(.success(usage)), errors: [], isFinal: true)
+                        }
+                    }
+                } catch is CancellationError {
+                    return
+                } catch {
+                    // Keep uncertain operations durable for the existing manual recovery UI.
+                    // A failed account must not prevent checks for the remaining accounts.
+                    self.automaticResetLogger.error("Automatic reset operation failed for account: \(account.identityKey, privacy: .private)")
+                }
+            }
+        }
     }
 
     private func updateResetRecovery() {
@@ -305,6 +431,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.updateResetRecovery()
             return
         }
+        let oldAutomaticReset = automaticResetTask
+        oldAutomaticReset?.cancel()
         let oldRefresh = refreshTask
         oldRefresh?.cancel()
         refreshTask = nil
@@ -320,6 +448,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.updateResetRecovery()
                 self.refresh()
             }
+            await oldAutomaticReset?.value
             do {
                 let pending = try PendingResetStore().read(account.identityKey)
                 let target: String

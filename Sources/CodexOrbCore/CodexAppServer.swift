@@ -117,6 +117,8 @@ final class AppServerConnection {
         }
     }
 
+    func checkCancellation() throws { try cancellation.check() }
+
     func send(_ object: [String: Any]) throws {
         try cancellation.check()
         guard process.isRunning else { throw AppServerError.disconnected }

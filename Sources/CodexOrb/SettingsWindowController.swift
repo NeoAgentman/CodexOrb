@@ -19,6 +19,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let languagePopup = NSPopUpButton()
     private let appearancePopup = NSPopUpButton()
     private let refreshPopup = NSPopUpButton()
+    private let automaticResetToggle = NSButton(checkboxWithTitle: L10n.text("自动使用即将到期的重置卡"), target: nil, action: nil)
+    private let automaticResetHours = NSPopUpButton()
+    private let automaticResetAllAccounts = NSButton(checkboxWithTitle: L10n.text("应用到所有账号"), target: nil, action: nil)
     private let validationLabel = NSTextField(labelWithString: "")
     private let updateButton = NSButton(title: L10n.text("检查更新"), target: nil, action: nil)
     private let updateSpinner = NSProgressIndicator()
@@ -89,6 +92,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         if let index = AppSettings.refreshChoices.firstIndex(where: { $0.seconds == settings.refreshInterval }) {
             self.refreshPopup.selectItem(at: index)
         }
+        automaticResetToggle.state = settings.automaticReset.enabled ? .on : .off
+        automaticResetToggle.target = self
+        automaticResetToggle.action = #selector(automaticResetChanged(_:))
+        for hours in 1...12 {
+            automaticResetHours.addItem(withTitle: L10n.text("\(hours) 小时"))
+            automaticResetHours.lastItem?.representedObject = hours
+        }
+        automaticResetHours.selectItem(at: max(0, min(11, settings.automaticReset.hoursBeforeExpiration - 1)))
+        automaticResetHours.setAccessibilityLabel(L10n.text("到期前"))
+        automaticResetAllAccounts.state = settings.automaticReset.allAccounts ? .on : .off
+        automaticResetChanged(automaticResetToggle)
         self.defaultExpandedToggle.state = settings.capsuleExpandedByDefault ? .on : .off
         self.validationLabel.font = .systemFont(ofSize: 11)
         self.validationLabel.textColor = .systemRed
@@ -165,6 +179,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             text(L10n.text("刷新与记录"), heading: true),
             row([NSTextField(labelWithString: L10n.text("自动刷新")), spacer(), self.refreshPopup]),
         ])
+        let automaticResetSection = section([
+            automaticResetToggle,
+            row([NSTextField(labelWithString: L10n.text("到期前")), spacer(), automaticResetHours]),
+            automaticResetAllAccounts,
+        ])
         let capsuleSection = section([
             text(L10n.text("胶囊显示"), heading: true),
             row([text(L10n.text("语言"), heading: true), spacer(), self.languagePopup]),
@@ -175,13 +194,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             row([text(L10n.text("工具更新"), heading: true), spacer(), self.updateSpinner, self.updateButton]),
             self.openTokenUpdateLabel,
         ])
-        let sections = NSStackView(views: [startupSection, accountSection, capsuleSection, refreshSection, toolsSection])
+        let sections = NSStackView(views: [startupSection, accountSection, capsuleSection, refreshSection, automaticResetSection, toolsSection])
         sections.orientation = .vertical
         sections.alignment = .leading
         sections.spacing = 12
         sections.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(sections)
-        for section in [startupSection, accountSection, capsuleSection, refreshSection, toolsSection] {
+        for section in [startupSection, accountSection, capsuleSection, refreshSection, automaticResetSection, toolsSection] {
             section.widthAnchor.constraint(equalTo: sections.widthAnchor).isActive = true
         }
         let cancelButton = NSButton(title: L10n.text("取消"), target: self, action: #selector(self.cancel(_:)))
@@ -215,6 +234,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Fit the fixed-width window to the visible rows instead of stretching the first card.
+    @objc private func automaticResetChanged(_ sender: Any?) {
+        automaticResetHours.isEnabled = automaticResetToggle.state == .on
+        automaticResetAllAccounts.isEnabled = automaticResetToggle.state == .on
+    }
+
     private func fitWindowToContent() {
         guard let window = self.window, let contentView = window.contentView,
               !contentView.subviews.isEmpty else { return }
@@ -312,7 +336,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                                    appearance: appearance,
                                    accountHome: accountHome,
                                    capsuleExpandedByDefault: self.defaultExpandedToggle.state == .on,
-                                   refreshInterval: interval)
+                                   refreshInterval: interval,
+                                   automaticReset: AutomaticResetPolicy(
+                                    enabled: automaticResetToggle.state == .on,
+                                    hoursBeforeExpiration: automaticResetHours.indexOfSelectedItem + 1,
+                                    allAccounts: automaticResetAllAccounts.state == .on))
         do {
             let store = CodexAccountStore()
             for account in self.pendingAccountRemovals {

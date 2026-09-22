@@ -186,27 +186,50 @@ public actor CodexAccountService {
                 // Persist before sending; even a crash or lost response must reuse this key.
                 try store.save(pending!)
             }
-            var operation = pending!
-            // A recovered operation must never silently switch to a newly clicked card.
-            guard operation.creditID == creditID else { throw AppServerError.busy }
-            try Self.verify(account)
-            if operation.outcome == nil {
-                let response = try connection.request("account/rateLimitResetCredit/consume", params: [
-                    "creditId": operation.creditID, "idempotencyKey": operation.idempotencyKey,
-                ])
-                guard let value = response["outcome"] as? String, let outcome = ResetOutcome(rawValue: value) else { throw AppServerError.protocolError }
-                operation.outcome = outcome
-                // Failure to persist must not turn a known success into an unknown result.
-                try? store.save(operation)
-            }
-            let outcome = operation.outcome!
-            do {
-                let usage = try Self.read(connection, account: account)
-                try store.clear(account.identityKey)
-                return ResetResult(outcome: outcome, usage: usage)
-            } catch {
-                return ResetResult(outcome: outcome, usage: nil)
-            }
+            return try Self.complete(pending!, account: account, creditID: creditID, connection: connection, store: store)
+        }
+    }
+
+    /// Selects and validates under the same account lock as the mutation. Never recovers an
+    /// uncertain/manual operation automatically; the existing recovery UI owns that decision.
+    public func consumeExpiring(account: CodexAccount, policy: AutomaticResetPolicy, expectedCreditID: String? = nil) async throws -> ResetResult? {
+        guard policy.enabled else { return nil }
+        let store = pendingStore
+        return try await run(account: account) { connection in
+            guard try store.read(account.identityKey) == nil else { return nil }
+            let usage = try Self.read(connection, account: account)
+            guard let creditID = policy.candidate(in: usage)?.id,
+                  expectedCreditID == nil || creditID == expectedCreditID,
+                  try !AutomaticResetDismissalStore(root: store.root).contains(identity: account.identityKey, creditID: creditID) else { return nil }
+            try connection.checkCancellation()
+            let pending = PendingReset(identityKey: account.identityKey, creditID: creditID)
+            try store.save(pending)
+            return try Self.complete(pending, account: account, creditID: creditID, connection: connection, store: store)
+        }
+    }
+
+    private static func complete(_ pending: PendingReset, account: CodexAccount, creditID: String,
+                                 connection: AppServerConnection, store: PendingResetStore) throws -> ResetResult {
+        var operation = pending
+        // A recovered operation must never silently switch to a newly clicked card.
+        guard operation.creditID == creditID else { throw AppServerError.busy }
+        try Self.verify(account)
+        if operation.outcome == nil {
+            let response = try connection.request("account/rateLimitResetCredit/consume", params: [
+                "creditId": operation.creditID, "idempotencyKey": operation.idempotencyKey,
+            ])
+            guard let value = response["outcome"] as? String, let outcome = ResetOutcome(rawValue: value) else { throw AppServerError.protocolError }
+            operation.outcome = outcome
+            // Failure to persist must not turn a known success into an unknown result.
+            try? store.save(operation)
+        }
+        let outcome = operation.outcome!
+        do {
+            let usage = try Self.read(connection, account: account)
+            try store.clear(account.identityKey)
+            return ResetResult(outcome: outcome, usage: usage)
+        } catch {
+            return ResetResult(outcome: outcome, usage: nil)
         }
     }
 
