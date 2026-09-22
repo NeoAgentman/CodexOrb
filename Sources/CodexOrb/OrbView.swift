@@ -29,6 +29,36 @@ final class OrbView: NSView, NSMenuDelegate {
 
     weak var delegate: OrbViewDelegate?
 
+    var hasCommitment = false {
+        didSet {
+            guard self.hasCommitment != oldValue else { return }
+            self.updateFlameAnimation()
+            self.needsDisplay = true
+        }
+    }
+    private var flameAnimation: Task<Void, Never>?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        self.updateFlameAnimation()
+    }
+
+    private func updateFlameAnimation() {
+        self.flameAnimation?.cancel()
+        self.flameAnimation = nil
+        guard self.hasCommitment, self.window != nil else { return }
+        self.flameAnimation = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard self?.hasCommitment == true, self?.window != nil else { return }
+                let animate = self?.window?.isVisible == true
+                    && self?.window?.occlusionState.contains(.visible) == true
+                self?.needsDisplay = true
+                do { try await Task.sleep(for: animate ? .milliseconds(33) : .milliseconds(500)) }
+                catch { return }
+            }
+        }
+    }
+
     var displayState: OrbDisplayState = .loading(previous: nil) {
         didSet {
             self.updateSummaryToolTip()
@@ -278,6 +308,7 @@ final class OrbView: NSView, NSMenuDelegate {
         let capsule = self.bounds.insetBy(dx: 3, dy: 3)
         let radius = capsule.height / 2
         colors.drawBackground(in: capsule, cornerRadius: radius, context: context)
+        if self.hasCommitment { self.drawCommitmentFlames(in: context, capsule: capsule) }
         self.drawInteractionHighlight(in: context)
 
         let usage = self.displayState.usage
@@ -361,6 +392,92 @@ final class OrbView: NSView, NSMenuDelegate {
             context.setFillColor(NSColor.systemOrange.cgColor)
             context.fillEllipse(in: marker)
         }
+    }
+
+    private func drawCommitmentFlames(in context: CGContext, capsule: CGRect) {
+        // This opt-in commitment effect plays independently of system Reduce Motion.
+        let time = Date.timeIntervalSinceReferenceDate
+        let dark = self.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let outline = CGPath(roundedRect: capsule, cornerWidth: capsule.height / 2,
+                             cornerHeight: capsule.height / 2, transform: nil)
+        let space = CGColorSpaceCreateDeviceRGB()
+        context.saveGState()
+        context.addPath(outline)
+        context.clip()
+
+        // The entire surface glows; the content is painted above the fire.
+        let glow = CGGradient(colorsSpace: space, colors: [
+            NSColor(calibratedRed: 1, green: 0.22, blue: 0.02, alpha: dark ? 0.65 : 0.42).cgColor,
+            NSColor(calibratedRed: 0.9, green: 0.025, blue: 0.06, alpha: dark ? 0.42 : 0.24).cgColor,
+            NSColor(calibratedRed: 0.55, green: 0.015, blue: 0.09, alpha: dark ? 0.3 : 0.12).cgColor,
+        ] as CFArray, locations: [0, 0.5, 1])!
+        context.drawLinearGradient(glow, start: CGPoint(x: capsule.midX, y: capsule.minY),
+                                   end: CGPoint(x: capsule.midX, y: capsule.maxY), options: [])
+
+        // Three overlapping sheets of curved tongues move at different speeds.
+        // A fixed spacing keeps their size consistent as the capsule expands.
+        for layer in 0..<3 {
+            let spacing: CGFloat = [20, 16, 13][layer]
+            let count = Int(ceil(capsule.width / spacing)) + 2
+            let heightScale: CGFloat = [0.96, 0.74, 0.43][layer]
+            let flames = CGMutablePath()
+            for index in -1..<count {
+                let seed = Double(index) * 2.399 + Double(layer) * 1.7
+                let phase = time * (2.8 + Double(layer) * 0.6) + seed
+                let pulse = CGFloat(0.5 + 0.3 * sin(phase) + 0.2 * sin(phase * 1.73 + seed))
+                let height = capsule.height * heightScale * (0.5 + pulse * 0.5)
+                let x = capsule.minX + CGFloat(index) * spacing
+                let y = capsule.minY - 3
+                let sway = CGFloat(sin(phase * 0.8)) * spacing * 0.42
+                let tip = CGPoint(x: x + sway, y: y + height)
+                flames.move(to: CGPoint(x: x - spacing * 0.8, y: y))
+                // Matching horizontal tangents round the crest instead of forming a cusp.
+                flames.addCurve(to: tip,
+                    control1: CGPoint(x: x - spacing * 0.75, y: y + height * 0.42),
+                    control2: CGPoint(x: tip.x - spacing * 0.48, y: tip.y))
+                flames.addCurve(to: CGPoint(x: x + spacing * 0.8, y: y),
+                    control1: CGPoint(x: tip.x + spacing * 0.48, y: tip.y),
+                    control2: CGPoint(x: x + spacing * 0.35, y: y + height * 0.32))
+                flames.closeSubpath()
+            }
+            let alpha: CGFloat = dark ? 0.68 : 0.48
+            let gradient = CGGradient(colorsSpace: space, colors: [
+                NSColor(calibratedRed: 1, green: 0.48 + CGFloat(layer) * 0.15,
+                        blue: 0.08, alpha: alpha).cgColor,
+                NSColor(calibratedRed: 1, green: 0.12 + CGFloat(layer) * 0.10,
+                        blue: 0.015, alpha: alpha).cgColor,
+                NSColor(calibratedRed: 0.94, green: 0.025, blue: 0.045, alpha: alpha * 0.8).cgColor,
+                NSColor(calibratedRed: 0.65, green: 0.015, blue: 0.10, alpha: 0.12).cgColor,
+            ] as CFArray, locations: [0, 0.3, 0.68, 1])!
+            context.saveGState()
+            context.addPath(flames)
+            context.clip()
+            context.drawLinearGradient(gradient, start: CGPoint(x: capsule.midX, y: capsule.minY),
+                end: CGPoint(x: capsule.midX, y: capsule.minY + capsule.height * heightScale), options: [])
+            context.restoreGState()
+        }
+
+        // Small embers drift upward across the full width, fading before the rim.
+        for index in 0..<max(5, Int(capsule.width / 9)) {
+            let seed = Double(index) * 0.61803398875
+            let progress = (time * (0.3 + Double(index % 3) * 0.07) + seed)
+                .truncatingRemainder(dividingBy: 1)
+            let x = capsule.minX + CGFloat(seed.truncatingRemainder(dividingBy: 1)) * capsule.width
+                + CGFloat(sin(time * 2 + Double(index))) * 2
+            let y = capsule.minY + CGFloat(progress) * capsule.height
+            context.setFillColor(NSColor(calibratedRed: 1, green: [0.2, 0.48, 0.82][index % 3], blue: 0.08,
+                                          alpha: CGFloat(sin(progress * .pi)) * 0.8).cgColor)
+            context.fillEllipse(in: CGRect(x: x, y: y, width: 1.1, height: 2.2))
+        }
+        context.restoreGState()
+        context.saveGState()
+        let rim = NSColor(calibratedRed: 1, green: 0.16, blue: 0.035, alpha: 1)
+        context.setShadow(offset: .zero, blur: 3, color: rim.withAlphaComponent(0.7).cgColor)
+        context.setStrokeColor(rim.withAlphaComponent(0.75).cgColor)
+        context.setLineWidth(1)
+        context.addPath(outline)
+        context.strokePath()
+        context.restoreGState()
     }
 
     private var pressedContentRegion: ContentRegion? {

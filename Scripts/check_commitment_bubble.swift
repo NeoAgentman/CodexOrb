@@ -36,12 +36,40 @@ struct CommitmentBubbleChecks {
         let bubble = NSApp.windows.compactMap { $0 as? CommitmentBubble }.first!
 
         controller.updateForecast(nil)
+        precondition(!orb.hasCommitment)
         controller.updateForecast(forecast(83))
+        precondition(orb.hasCommitment, "An initial commitment must light the rings")
+        controller.update(.available(CodexUsage(windows: [
+            .init(kind: .weekly, usedPercent: 40, resetsAt: Date().addingTimeInterval(4 * 86400), resetDescription: nil),
+            .init(kind: .fiveHour, usedPercent: 20, resetsAt: Date().addingTimeInterval(3600), resetDescription: nil),
+        ], updatedAt: Date())))
+        for expanded in [false, true] {
+            controller.updateDefaultExpansion(expanded, animated: false)
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                orb.appearance = NSAppearance(named: appearance)
+                var previous: Data?
+                for frame in 0..<2 {
+                    let bitmap = orb.bitmapImageRepForCachingDisplay(in: orb.bounds)!
+                    orb.cacheDisplay(in: orb.bounds, to: bitmap)
+                    let data = bitmap.representation(using: .png, properties: [:])!
+                    if let previous {
+                        precondition(previous != data, "Fire must animate between frames")
+                    }
+                    previous = data
+                    try data.write(to: URL(fileURLWithPath: NSTemporaryDirectory())
+                        .appendingPathComponent("orb-flames-\(expanded)-\(appearance.rawValue)-\(frame).png"))
+                    try await Task.sleep(for: .milliseconds(180))
+                }
+            }
+        }
+        orb.appearance = nil
         precondition(!bubble.isVisible, "First successful result is a baseline, not a new commitment")
         controller.updateForecast(nil)
+        precondition(orb.hasCommitment, "A failed refresh must preserve the flame")
         controller.updateForecast(forecast(85))
         precondition(!bubble.isVisible, "A missing result cannot create a false transition")
         controller.updateForecast(forecast(nil))
+        precondition(!orb.hasCommitment, "A cleared commitment must extinguish the flame")
         controller.updateForecast(nil)
         controller.updateForecast(forecast(83))
         precondition(bubble.isVisible, "Absent to present must show the bubble even without an X URL")
@@ -100,6 +128,7 @@ struct CommitmentBubbleChecks {
                 try bitmap.representation(using: .png, properties: [:])!.write(to: url)
             }
             controller.updateForecast(forecast(0))
+            precondition(!orb.hasCommitment)
             precondition(!bubble.isVisible, "A removed commitment must hide a stale notice")
         }
         controller.updateForecast(forecast(83))

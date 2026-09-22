@@ -205,6 +205,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         // and a missing refresh result must never look like a removed commitment.
         if let forecast {
             let percent = forecast.commitmentPercent.flatMap { (1...100).contains($0) ? $0 : nil }
+            self.orbView.hasCommitment = percent != nil
             if self.hadCommitment == false, percent != nil, self.panel.isVisible {
                 self.commitmentBubble.show(beside: self.panel,
                                            duration: self.commitmentNoticeDuration)
