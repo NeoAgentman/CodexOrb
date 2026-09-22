@@ -417,27 +417,27 @@ final class OrbView: NSView, NSMenuDelegate {
         // Three overlapping sheets of curved tongues move at different speeds.
         // A fixed spacing keeps their size consistent as the capsule expands.
         for layer in 0..<3 {
-            let spacing: CGFloat = [20, 16, 13][layer]
+            let spacing: CGFloat = [17, 13, 11][layer]
             let count = Int(ceil(capsule.width / spacing)) + 2
             let heightScale: CGFloat = [0.96, 0.74, 0.43][layer]
             let flames = CGMutablePath()
             for index in -1..<count {
                 let seed = Double(index) * 2.399 + Double(layer) * 1.7
-                let phase = time * (2.8 + Double(layer) * 0.6) + seed
-                let pulse = CGFloat(0.5 + 0.3 * sin(phase) + 0.2 * sin(phase * 1.73 + seed))
-                let height = capsule.height * heightScale * (0.5 + pulse * 0.5)
+                let phase = time * (1.9 + Double(layer) * 0.3) + seed
+                let pulse = CGFloat(0.6 * sin(phase) + 0.4 * sin(phase * 1.73 + seed))
+                let baseHeight = CGFloat(0.73 + 0.1 * sin(seed))
+                let height = capsule.height * heightScale * (baseHeight + pulse * 0.045)
                 let x = capsule.minX + CGFloat(index) * spacing
                 let y = capsule.minY - 3
-                let sway = CGFloat(sin(phase * 0.8)) * spacing * 0.42
+                let sway = CGFloat(sin(phase * 0.8)) * spacing * 0.12
                 let tip = CGPoint(x: x + sway, y: y + height)
                 flames.move(to: CGPoint(x: x - spacing * 0.8, y: y))
-                // Matching horizontal tangents round the crest instead of forming a cusp.
                 flames.addCurve(to: tip,
                     control1: CGPoint(x: x - spacing * 0.75, y: y + height * 0.42),
-                    control2: CGPoint(x: tip.x - spacing * 0.48, y: tip.y))
+                    control2: CGPoint(x: x + sway - spacing * 0.4, y: y + height * 0.64))
                 flames.addCurve(to: CGPoint(x: x + spacing * 0.8, y: y),
-                    control1: CGPoint(x: tip.x + spacing * 0.48, y: tip.y),
-                    control2: CGPoint(x: x + spacing * 0.35, y: y + height * 0.32))
+                    control1: CGPoint(x: x + sway + spacing * 0.08, y: y + height * 0.61),
+                    control2: CGPoint(x: x + spacing * 0.75, y: y + height * 0.35))
                 flames.closeSubpath()
             }
             let alpha: CGFloat = dark ? 0.68 : 0.48
@@ -469,14 +469,98 @@ final class OrbView: NSView, NSMenuDelegate {
                                           alpha: CGFloat(sin(progress * .pi)) * 0.8).cgColor)
             context.fillEllipse(in: CGRect(x: x, y: y, width: 1.1, height: 2.2))
         }
+        self.drawCommitmentSparkBurst(in: context, capsule: capsule, time: time)
         context.restoreGState()
         context.saveGState()
+        let breath = CGFloat(0.5 + 0.5 * sin(time * .pi / 2))
         let rim = NSColor(calibratedRed: 1, green: 0.16, blue: 0.035, alpha: 1)
-        context.setShadow(offset: .zero, blur: 3, color: rim.withAlphaComponent(0.7).cgColor)
-        context.setStrokeColor(rim.withAlphaComponent(0.75).cgColor)
-        context.setLineWidth(1)
+        context.setShadow(offset: .zero, blur: 2 + breath * 2,
+                          color: rim.withAlphaComponent(0.35 + breath * 0.3).cgColor)
+        context.setStrokeColor(rim.withAlphaComponent(0.4 + breath * 0.25).cgColor)
+        context.setLineWidth(1 + breath * 0.4)
         context.addPath(outline)
         context.strokePath()
+        context.restoreGState()
+        self.drawCommitmentLightTrail(in: context, capsule: capsule, time: time)
+    }
+
+    private func drawCommitmentSparkBurst(in context: CGContext, capsule: CGRect, time: TimeInterval) {
+        let interval = 1.7
+        let cycle = floor(time / interval)
+        let age = time - cycle * interval
+        let lifetime = 0.65
+        guard age < lifetime else { return }
+        // Each burst starts at a different point in the fire, with a quiet gap between bursts.
+        let seed = (cycle * 0.61803398875).truncatingRemainder(dividingBy: 1)
+        let origin = CGPoint(x: capsule.minX + capsule.width * (0.22 + CGFloat(seed) * 0.56),
+                             y: capsule.minY + capsule.height * 0.24)
+        let fade = CGFloat(pow(1 - age / lifetime, 1.4) * min(1, age / 0.035))
+        context.saveGState()
+        context.setLineCap(.round)
+        for index in 0..<7 {
+            let spread = CGFloat(index) / 6
+            let angle = CGFloat.pi * (0.12 + spread * 0.76)
+            let speed = CGFloat(38 + 18 * sin(Double(index) * 2.4 + seed * 6))
+            func position(at elapsed: Double) -> CGPoint {
+                let t = CGFloat(max(0, elapsed))
+                return CGPoint(x: origin.x + cos(angle) * speed * t,
+                               y: origin.y + sin(angle) * speed * t - 18 * t * t)
+            }
+            let tint = NSColor(calibratedRed: 1, green: 0.5 + spread * 0.4,
+                               blue: 0.12 + spread * 0.42, alpha: fade)
+            context.setShadow(offset: .zero, blur: 2.5, color: tint.cgColor)
+            context.setStrokeColor(tint.cgColor)
+            context.setLineWidth(0.9)
+            context.move(to: position(at: age - 0.055))
+            context.addLine(to: position(at: age))
+            context.strokePath()
+            let head = position(at: age)
+            context.setFillColor(NSColor(calibratedRed: 1, green: 0.94, blue: 0.65, alpha: fade).cgColor)
+            context.fillEllipse(in: CGRect(x: head.x - 0.65, y: head.y - 0.65, width: 1.3, height: 1.3))
+        }
+        context.restoreGState()
+    }
+
+    private func drawCommitmentLightTrail(in context: CGContext, capsule: CGRect, time: TimeInterval) {
+        let rect = capsule.insetBy(dx: 0.7, dy: 0.7)
+        let radius = rect.height / 2
+        let straight = max(0, rect.width - rect.height)
+        let arc = CGFloat.pi * radius
+        let perimeter = 2 * (straight + arc)
+        guard perimeter > 0 else { return }
+        // Follow the actual capsule perimeter, including its circular collapsed shape.
+        func point(at distance: CGFloat) -> CGPoint {
+            let d = (distance.truncatingRemainder(dividingBy: perimeter) + perimeter)
+                .truncatingRemainder(dividingBy: perimeter)
+            if d < straight {
+                return CGPoint(x: rect.minX + radius + d, y: rect.maxY)
+            } else if d < straight + arc {
+                let angle = CGFloat.pi / 2 - (d - straight) / radius
+                return CGPoint(x: rect.maxX - radius + cos(angle) * radius,
+                               y: rect.midY + sin(angle) * radius)
+            } else if d < 2 * straight + arc {
+                return CGPoint(x: rect.maxX - radius - (d - straight - arc), y: rect.minY)
+            } else {
+                let angle = -CGFloat.pi / 2 - (d - 2 * straight - arc) / radius
+                return CGPoint(x: rect.minX + radius + cos(angle) * radius,
+                               y: rect.midY + sin(angle) * radius)
+            }
+        }
+        let head = CGFloat(time.truncatingRemainder(dividingBy: 5) / 5) * perimeter
+        let length = min(80, perimeter * 0.35)
+        context.saveGState()
+        context.setLineCap(.round)
+        for index in 0..<48 {
+            let fraction = CGFloat(index + 1) / 48
+            let tint = NSColor(calibratedRed: 1, green: 0.28 + 0.64 * fraction,
+                               blue: 0.05 + 0.55 * pow(fraction, 3), alpha: fraction * 0.95)
+            context.setStrokeColor(tint.cgColor)
+            context.setShadow(offset: .zero, blur: 2.5, color: tint.withAlphaComponent(fraction * 0.5).cgColor)
+            context.setLineWidth(0.7 + fraction * 1.1)
+            context.move(to: point(at: head - length + length * CGFloat(index) / 48))
+            context.addLine(to: point(at: head - length + length * fraction))
+            context.strokePath()
+        }
         context.restoreGState()
     }
 
