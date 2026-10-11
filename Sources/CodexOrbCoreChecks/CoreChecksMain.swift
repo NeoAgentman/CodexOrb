@@ -275,21 +275,33 @@ enum CodexOrbCoreChecks {
         let executable = directory.appendingPathComponent("opentoken")
         let script = """
         #!/bin/sh
-        test "$*" = "preview --since 2026-08-30 --json" || exit 64
-        printf '%s\n' '{"rows":[{"date":"2026-08-30","input":150,"normalized":200,"cache_read":800}],"sessions":[]}'
+        test "$OPENTOKEN_TZ_OFFSET_HOURS" = "8" || exit 65
+        test "$TZ" = "UTC" || exit 66
+        test "$1" = "preview" && test "$2" = "--since" && test "$4" = "--json" || exit 64
+        case "$3" in
+          2026-08-30|2026-08-31) ;;
+          *) exit 64 ;;
+        esac
+        printf '%s\n' '{"rows":[{"date":"2026-08-30","input":150,"normalized":200,"cache_read":800},{"date":"2026-08-31","input":300,"normalized":400,"cache_read":1600}],"sessions":[]}'
         """
         try Data(script.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
-        let now = ISO8601DateFormatter().date(from: "2026-08-30T10:00:00Z")!
-        let source = OpenTokenCLIUsageSource(
-            bundledExecutableDirectory: nil,
-            environment: ["PATH": directory.path, "TZ": "UTC"],
-            timeout: 2,
-            now: { now })
-        let usage = try await source.fetch()
-        try self.expect(usage.combinedTokens == 1_000, "OpenToken PATH combined total")
-        try self.expect(usage.toolUsages.isEmpty, "missing tool remains compatible")
-        try self.expect(usage.modelUsages.isEmpty, "missing model remains compatible")
+        for (timestamp, date, tokens) in [
+            ("2026-08-30T15:59:59Z", "2026-08-30", Int64(1_000)),
+            ("2026-08-30T16:00:00Z", "2026-08-31", Int64(2_000)),
+        ] {
+            let now = ISO8601DateFormatter().date(from: timestamp)!
+            let source = OpenTokenCLIUsageSource(
+                bundledExecutableDirectory: nil,
+                environment: ["PATH": directory.path, "TZ": "UTC", "OPENTOKEN_TZ_OFFSET_HOURS": "-7"],
+                timeout: 2,
+                now: { now })
+            let usage = try await source.fetch()
+            try self.expect(usage.date == date, "OpenToken day changes at UTC+8 midnight")
+            try self.expect(usage.combinedTokens == tokens, "OpenToken PATH combined total")
+            try self.expect(usage.toolUsages.isEmpty, "missing tool remains compatible")
+            try self.expect(usage.modelUsages.isEmpty, "missing model remains compatible")
+        }
     }
 
     private static func checkWeeklyPaceDelta() throws {

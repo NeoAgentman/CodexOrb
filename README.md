@@ -62,8 +62,10 @@ CodexOrb 会搜索 PATH、`~/.local/bin`、Homebrew 路径以及 Codex/ChatGPT �
 
 ```sh
 codex app-server --stdio -c 'cli_auth_credentials_store="file"'
-opentoken preview --since <today> --json
+OPENTOKEN_TZ_OFFSET_HOURS=8 opentoken preview --since <today> --json
 ```
+
+`<today>` 和日志按日分组均固定使用东八区（UTC+8），以东八区午夜为一天的分界，不随本机时区变化。
 
 ## 源码检出
 

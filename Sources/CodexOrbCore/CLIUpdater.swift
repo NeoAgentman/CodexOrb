@@ -156,14 +156,11 @@ public struct CLIUpdater: Sendable {
             throw CLIUpdateError.validation
         }
         let arguments: [String]
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
-        formatter.dateFormat = "yyyy-MM-dd"
-        let date = formatter.string(from: Date())
+        let date = OpenTokenCLIUsageSource.usageDateString(for: Date())
         arguments = ["preview", "--since", date, "--json"]
-        let output = try await CLIUpdateProcess.run(binary, arguments: arguments, timeout: 30)
+        let output = try await CLIUpdateProcess.run(
+            binary, arguments: arguments, timeout: 30,
+            environment: OpenTokenCLIUsageSource.usageEnvironment(ProcessInfo.processInfo.environment))
         guard output.status == 0 else { throw CLIUpdateError.validation }
         do { _ = try OpenTokenUsageParser.parse(output.stdout, date: date) }
         catch { throw CLIUpdateError.validation }

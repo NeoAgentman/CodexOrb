@@ -215,13 +215,13 @@ public struct OpenTokenCLIUsageSource: Sendable {
     }
 
     private func fetchBlocking() throws -> OpenTokenDailyUsage {
-        let date = Self.localDateString(for: self.now())
+        let date = Self.usageDateString(for: self.now())
         let process = Process()
         let stdout = Pipe()
         let stderr = Pipe()
         process.executableURL = try self.resolveExecutable()
         process.arguments = ["preview", "--since", date, "--json"]
-        process.environment = self.environment
+        process.environment = Self.usageEnvironment(self.environment)
         process.standardOutput = stdout
         process.standardError = stderr
 
@@ -282,11 +282,18 @@ public struct OpenTokenCLIUsageSource: Sendable {
         return executable
     }
 
-    private static func localDateString(for date: Date) -> String {
+    static func usageEnvironment(_ environment: [String: String]) -> [String: String] {
+        var environment = environment
+        // OpenToken groups log timestamps using its own offset, independently of TZ.
+        environment["OPENTOKEN_TZ_OFFSET_HOURS"] = "8"
+        return environment
+    }
+
+    static func usageDateString(for date: Date) -> String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
+        formatter.timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60)!
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
     }
