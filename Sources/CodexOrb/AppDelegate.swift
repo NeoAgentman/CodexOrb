@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var usageSource: CombinedUsageSource
     private let forecastSource = CodexResetForecastSource()
     private let panelController = OrbPanelController()
+    private let serviceStatusMonitor = ServiceStatusMonitor()
     private var settingsWindowController: SettingsWindowController?
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
@@ -58,6 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             animated: false)
         self.updateAccountBadge()
         self.panelController.show()
+        self.serviceStatusMonitor.onUpdate = { [weak self] state in
+            self?.panelController.updateServiceStatus(state)
+        }
+        self.serviceStatusMonitor.start()
         self.refresh()
         self.scheduleRefreshTimer()
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -70,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         _ = notification
         self.terminating = true
+        self.serviceStatusMonitor.stop()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         self.automaticResetTimer?.invalidate()
         self.automaticResetTask?.cancel()
@@ -264,12 +270,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func willSleep(_ notification: Notification) {
         sleeping = true
+        serviceStatusMonitor.stop()
         automaticResetGeneration = UUID()
         automaticResetTask?.cancel()
     }
 
     @objc private func didWake(_ notification: Notification) {
         sleeping = false
+        serviceStatusMonitor.start()
         checkAutomaticReset()
         refresh()
     }

@@ -56,6 +56,20 @@ public enum L10n {
     }
     public static func text(_ message: Message) -> String { message.rendered() }
     static let english: [String: String] = [
+        "OpenAI 服务异常": "OpenAI service issues",
+        "信息未更新": "Status not updated",
+        "信息未更新，以下为上次查询结果": "Status not updated. Showing the last known result.",
+        "最近检查：{0}": "Last checked: {0}",
+        "受影响服务：{0}": "Affected services: {0}",
+        "更新时间：{0}": "Updated: {0}",
+        "暂无详细进展": "No detailed update yet",
+        "查看故障详情": "View incident",
+        "查看状态官网": "Open status page",
+        "正在调查": "Investigating",
+        "已定位问题": "Identified",
+        "恢复观察中": "Monitoring recovery",
+        "维护进行中": "Maintenance in progress",
+        "正在验证": "Verifying",
         "自动使用重置卡": "Automatically use reset card",
         "到期时间：{0}": "Expires: {0}",
         "取消不使用": "Don't use",

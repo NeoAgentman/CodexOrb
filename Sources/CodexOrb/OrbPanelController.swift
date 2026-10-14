@@ -64,6 +64,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     private var forecast: CodexResetForecast?
     private var hadCommitment: Bool?
     private let commitmentBubble = CommitmentBubble()
+    private let serviceStatusPanel = ServiceStatusPanel()
     private let commitmentNoticeDuration: Duration
     private var resizeStartFrame: CGRect?
     private var resizeEdge: CapsuleGeometry.Edge = []
@@ -106,6 +107,17 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         super.init()
 
         self.orbView.delegate = self
+        self.serviceStatusPanel.onOpen = { [weak self] in
+            self?.commitmentBubble.dismiss()
+            self?.resetPopover?.close()
+            self?.accountPopover?.close()
+            self?.hoverDismissTask?.cancel()
+            self?.resizeTask?.cancel()
+        }
+        self.serviceStatusPanel.onCloseDetails = { [weak self] in
+            guard let self else { return }
+            self.orbView(self.orbView, didChangeHover: self.panel.frame.contains(NSEvent.mouseLocation))
+        }
         self.commitmentBubble.onActivate = { [weak self] in
             guard let self else { return }
             self.commitmentBubble.dismiss()
@@ -119,6 +131,8 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
                 self?.resetPopover?.appearance = NSApp.effectiveAppearance
                 self?.accountPopover?.appearance = NSApp.effectiveAppearance
                 self?.commitmentBubble.appearance = NSApp.effectiveAppearance
+                self?.serviceStatusPanel.appearance = NSApp.effectiveAppearance
+                self?.serviceStatusPanel.reloadAppearance()
             }
         }
         self.configure(self.panel, contentView: self.orbView)
@@ -136,6 +150,8 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     func reloadLanguage() {
+        self.serviceStatusPanel.dismissDetails()
+        self.updateServiceStatus(self.serviceStatusPanel.state)
         self.commitmentBubble.dismiss()
         self.resetPopover?.close()
         self.accountPopover?.close()
@@ -159,6 +175,9 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     func close() {
+        self.serviceStatusPanel.dismissDetails()
+        self.serviceStatusPanel.parent?.removeChildWindow(self.serviceStatusPanel)
+        self.serviceStatusPanel.close()
         self.commitmentBubble.dismiss()
         self.commitmentBubble.close()
         self.resetPopover?.close()
@@ -199,6 +218,14 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         }
     }
 
+    func updateServiceStatus(_ state: OpenAIServiceStatusState) {
+        self.serviceStatusPanel.update(state, beside: self.panel, avoiding: self.statusObstacles)
+    }
+
+    private var statusObstacles: [NSRect] {
+        [self.accountBadgePanel, self.commitmentBubble].filter(\.isVisible).map(\.frame)
+    }
+
     func updateForecast(_ forecast: CodexResetForecast?) {
         self.forecast = forecast
         // Only successful snapshots establish presence. The first is a baseline,
@@ -214,12 +241,14 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
             }
             self.hadCommitment = percent != nil
         }
+        self.serviceStatusPanel.reposition(beside: self.panel, avoiding: self.statusObstacles)
         guard let popover = self.resetPopover, popover.isShown, self.detailKind == .quota else { return }
         self.configureDetailContent(popover)
     }
 
     func orbView(_ view: OrbView, didDragBy delta: CGPoint) {
         guard view === self.orbView else { return }
+        self.serviceStatusPanel.dismissDetails()
         self.resetPopover?.close()
         var frame = self.panel.frame
         frame.origin.x += delta.x
@@ -236,6 +265,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
 
     func orbView(_ view: OrbView, didBeginResizing edge: CapsuleGeometry.Edge) {
         guard view === self.orbView else { return }
+        self.serviceStatusPanel.dismissDetails()
         self.resizeTask?.cancel()
         self.hoverDismissTask?.cancel()
         // Preserve an in-flight hover animation's geometry while the user holds the edge.
@@ -277,7 +307,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
         self.isHoveringCapsule = isHovering
         guard self.resizeStartFrame == nil else { return }
         self.hoverDismissTask?.cancel()
-        guard self.resetPopover?.isShown != true else { return }
+        guard self.resetPopover?.isShown != true, !self.serviceStatusPanel.isShowingDetails else { return }
         if isHovering {
             self.setCapsuleExpanded(true)
         } else {
@@ -304,6 +334,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
 
     private func showDetails(_ kind: DetailKind, from view: OrbView) {
         guard view === self.orbView else { return }
+        self.serviceStatusPanel.dismissDetails()
         self.commitmentBubble.dismiss()
         if let popover = self.resetPopover, popover.isShown {
             let sameKind = self.detailKind == kind
@@ -342,6 +373,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     private func showAccountDetails() {
+        self.serviceStatusPanel.dismissDetails()
         self.commitmentBubble.dismiss()
         self.onAccountListRefresh?()
         guard let accountInfo else { return }
@@ -621,6 +653,7 @@ final class OrbPanelController: NSObject, OrbViewDelegate, NSPopoverDelegate {
     }
 
     private func positionAccountBadge() {
+        defer { self.serviceStatusPanel.reposition(beside: self.panel, avoiding: self.statusObstacles) }
         if self.commitmentBubble.isVisible { self.commitmentBubble.reposition(beside: self.panel) }
         guard self.accountInfo != nil else {
             self.accountBadgePanel.orderOut(nil)

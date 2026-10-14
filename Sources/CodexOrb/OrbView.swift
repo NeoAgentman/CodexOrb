@@ -877,17 +877,18 @@ final class OrbView: NSView, NSMenuDelegate {
     }
 
     private static func compactTokenCount(_ value: Int64) -> String {
-        let amount = Double(value)
-        switch value {
-        case 1_000_000_000...:
-            return String(format: "%.1fB", amount / 1_000_000_000)
-        case 1_000_000...:
-            return String(format: "%.1fM", amount / 1_000_000)
-        case 1_000...:
-            return String(format: "%.1fK", amount / 1_000)
-        default:
-            return "\(value)"
+        guard value >= 1_000 else { return "\(value)" }
+        let units = ["", "K", "M", "B", "T", "P", "E"]
+        var amount = Double(value)
+        var unit = 0
+        // Promote before rounding so 999.5M becomes 1.0B, never 1000M.
+        while amount >= 999.5, unit < units.count - 1 {
+            amount /= 1_000
+            unit += 1
         }
+        // Keep the existing decimal below 100, with at most three numeric digits.
+        let format = amount < 99.95 ? "%.1f%@" : "%.0f%@"
+        return String(format: format, amount, units[unit])
     }
 
     private var colors: CapsuleSurfaceColors {

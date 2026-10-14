@@ -10,6 +10,7 @@ bin_dir = Path(subprocess.check_output(['swift', 'build', '--show-bin-path'], te
 objects = [p for p in (bin_dir/'CodexOrb.product/Objects.LinkFileList').read_text().splitlines()
            if '/CodexOrbCore.build/' in p]
 checks = [
+    ('service-status', ['AccountBadgeView.swift', 'CapsuleSurfaceStyle.swift', 'CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'CommitmentBubble.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift', 'TokenDetailsView.swift'], 'check_service_status.swift'),
     ('automatic-reset', ['AutomaticResetConfirmation.swift'], 'check_automatic_reset.swift'),
     ('commitment-bubble', ['AccountBadgeView.swift', 'CapsuleSurfaceStyle.swift', 'CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'CommitmentBubble.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift', 'TokenDetailsView.swift'], 'check_commitment_bubble.swift'),
     ('appearance', ['AppSettings.swift', 'CLIUpdateController.swift', 'SettingsWindowController.swift', 'AccountBadgeView.swift', 'CapsuleSurfaceStyle.swift', 'CapsuleGeometry.swift', 'OrbView.swift', 'OrbPanelController.swift', 'CommitmentBubble.swift', 'ResetCardsView.swift', 'ResetConfirmation.swift', 'QuotaDetailsView.swift', 'TokenDetailsView.swift'], 'check_appearance.swift'),
@@ -27,6 +28,6 @@ with tempfile.TemporaryDirectory(prefix='codexorb-ui-check-') as directory:
         output = str(Path(directory)/name)
         subprocess.run(['swiftc', '-swift-version', '6', '-parse-as-library', '-I', str(bin_dir/'Modules')]
             + [str(Path('Sources/CodexOrb')/s) for s in sources]
-            + ['Sources/CodexOrb/BackgroundCursorAccess.swift', str(Path('Scripts')/check)] + objects + ['-o', output], check=True)
+            + ['Sources/CodexOrb/BackgroundCursorAccess.swift', 'Sources/CodexOrb/ServiceStatusPanel.swift', 'Sources/CodexOrb/ServiceStatusMonitor.swift', str(Path('Scripts')/check)] + objects + ['-o', output], check=True)
         subprocess.run([output], check=True)
 PY
